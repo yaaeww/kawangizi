@@ -1,0 +1,96 @@
+import 'package:uuid/uuid.dart';
+import '../domain/community_models.dart';
+
+final _uuid = Uuid();
+
+final List<CommunityPost> initialCommunityPosts = [
+  CommunityPost(
+    id: 'post-1',
+    author: 'Ibu Siti Aminah',
+    school: 'SDN Menteng 01 Pagi',
+    authorId: 'usr-guru-001',
+    timeAgo: '2 jam yang lalu',
+    createdAt: DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(),
+    tag: 'SOP Suhu',
+    tagColor: '#B45309',
+    tagBg: '#FEF3C7',
+    title: 'Pengingat: Suhu Holding Minimal 60°C',
+    content: 'Sahabat validator, mohon pastikan suhu holding boks makanan minimal 60°C saat serah terima. Boks di bawah 55°C wajib uji organoleptik sebelum dibagikan. Selamat mengabdi!',
+    mediaUri: null,
+    mediaType: null,
+    likesCount: 12,
+    isLiked: false,
+    isPinned: true,
+    comments: [
+      CommunityComment(
+        id: 'c-1',
+        postId: 'post-1',
+        author: 'Bpk. Ahmad Fauzi',
+        school: 'SDN Gondangdia 01',
+        authorId: 'usr-validator-003',
+        timeAgo: '1 jam yang lalu',
+        createdAt: DateTime.now().subtract(const Duration(hours: 1)).toIso8601String(),
+        content: 'Sudah menjadi SOP kami. Terima kasih pengingatnya!',
+        likesCount: 3,
+        isLiked: false,
+        replies: [],
+      ),
+    ],
+  ),
+  CommunityPost(
+    id: 'post-2',
+    author: 'Ibu Rina Wulandari',
+    school: 'SMPN 1 Surabaya Pusat',
+    authorId: 'usr-validator-004',
+    timeAgo: '5 jam yang lalu',
+    createdAt: DateTime.now().subtract(const Duration(hours: 5)).toIso8601String(),
+    tag: 'Rekap Presensi',
+    tagColor: '#15803D',
+    tagBg: '#DCFCE7',
+    title: 'Template Rekap Presensi Harian',
+    content: 'Bagikan template Excel rekap presensi harian yang sudah saya buat. Bisa diunduh di link komentar. Semoga membantu efisiensi administrasi.',
+    mediaUri: null,
+    mediaType: null,
+    likesCount: 8,
+    isLiked: false,
+    comments: [],
+  ),
+  CommunityPost(
+    id: 'post-3',
+    author: 'Bpk. Mulyono',
+    school: 'SPPG Menteng Jaya (Dapur #04)',
+    authorId: 'driver-001',
+    timeAgo: '1 hari yang lalu',
+    createdAt: DateTime.now().subtract(const Duration(days: 1)).toIso8601String(),
+    tag: 'Distribusi',
+    tagColor: '#D97706',
+    bg: '#FEF3C7',
+    title: 'Info: Armada B-9281-KBA Terganggu Macet',
+    content: 'Armada B-9281-KBA mengalami kemacetan di Jalan Sudirman. Perkiraan tiba 07:25 WIB. Mohon disampaikan ke sekolah tujuan.',
+    mediaUri: null,
+    mediaType: null,
+    likesCount: 5,
+    isLiked: false,
+    comments: [
+      CommunityComment(
+        id: 'c-2',
+        postId: 'post-3',
+        author: 'Ibu Siti Aminah',
+        school: 'SDN Menteng 01 Pagi',
+        authorId: 'usr-guru-001',
+        timeAgo: '20 jam yang lalu',
+        createdAt: DateTime.now().subtract(const Duration(hours: 20)).toIso8601String(),
+        content: 'Terima kasih infonya Pak. Kami siap menunggu.',
+        likesCount: 2,
+        isLiked: false,
+        replies: [],
+      ),
+    ],
+  ),
+];
+
+List<CommunityPost> getInitialCommunityPosts() => List.unmodifiable(initialCommunityPosts);
+
+class CommunitySeed {
+  static List<CommunityPost> get posts => initialCommunityPosts;
+}
