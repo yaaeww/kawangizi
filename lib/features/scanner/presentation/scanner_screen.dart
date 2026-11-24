@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -5,10 +6,11 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import 'package:kawangizi_mobile/core/theme/app_colors.dart';
-import 'package:kawangizi_mobile/core/utils/relative_time.dart';
-import 'package:kawangizi_mobile/features/auth/presentation/auth_controller.dart';
-import '../domain/scan_models.dart';
+import 'package:kawangizi_mobile/shared/widgets/feature_header.dart';
+import '../domain/scan_models.dart' show Verdict;
+import '../data/scan_repository.dart';
 import 'scanner_controller.dart';
+import 'widgets/yolo_bounding_box_painter.dart';
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({super.key});
@@ -66,6 +68,26 @@ class _ScannerView extends StatelessWidget {
   final VoidCallback onExit;
   final VoidCallback onOpenProfile;
 
+  void _showGuideDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Panduan Pemindaian Porsi MBG'),
+        content: const Text(
+          '1. Masukkan token QR boks atau biarkan kosong jika otomatis.\n'
+          '2. Masukkan suhu lepas dapur dan suhu holding saat boks tiba.\n'
+          '3. Ambil foto boks terbuka dengan pencahayaan cukup.\n'
+          '4. Model AI YOLOv8 akan menganalisis komponen menu dan status kelayakan makanan.',
+          style: TextStyle(height: 1.4, fontSize: 13),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Tutup')),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -73,42 +95,48 @@ class _ScannerView extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
+            // Header: Pindai Boks
             FeatureHeader(
               title: 'Pindai Boks',
               onOpenProfile: onOpenProfile,
-              onExit: onExit,
+              onExit: null, // As seen in screenshot, bottom tab bar handles navigation
             ),
+
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.only(bottom: 100),
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.only(bottom: 110),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Input Form
-                    _InputForm(controller: controller),
+                    // Top Amber Card (Matching Screenshot media_1795520353276_277b65bb.jpg)
+                    _TopAmberScanCard(
+                      controller: controller,
+                      picker: picker,
+                      onHelp: () => _showGuideDialog(context),
+                    ),
+
                     const SizedBox(height: 16),
-                    // Scan Button
-                    _ScanButton(controller: controller, picker: picker),
-                    const SizedBox(height: 16),
-                    // Captured Photo & Result
+
+                    // Bottom Area: Result if scanned, or Empty State Placeholder
                     if (controller.hasScanned) ...[
                       _CapturedPhotoSection(controller: controller, photoKey: photoKey),
                       const SizedBox(height: 16),
                       if (controller.backendScan != null)
                         _ResultSection(controller: controller),
                       if (controller.backendError != null)
-                        _ErrorSection(error: controller.backendError!, onRetry: () => controller.startScan(ImagePicker(), context)),
+                        _ErrorSection(
+                          error: controller.backendError!,
+                          onRetry: () => controller.startScan(picker, context),
+                        ),
+                    ] else ...[
+                      // Empty Placeholder Card
+                      const _ScanPlaceholderCard(),
                     ],
                   ],
                 ),
               ),
             ),
-            // Bottom tabs for gizi/kelayakan
-            if (controller.hasScanned && controller.backendScan != null)
-              _BottomTabBar(controller: controller),
-            // Chat / Guide buttons
-            if (controller.hasScanned && controller.backendScan != null)
-              _ActionButtons(controller: controller),
           ],
         ),
       ),
@@ -116,101 +144,215 @@ class _ScannerView extends StatelessWidget {
   }
 }
 
-// ===================== FeatureHeader (shared) =====================
-class FeatureHeader extends StatelessWidget {
-  const FeatureHeader({
-    super.key,
-    required this.title,
-    this.onOpenProfile,
-    this.onExit,
+// ===================== Top Amber Scan Card =====================
+class _TopAmberScanCard extends StatelessWidget {
+  const _TopAmberScanCard({
+    required this.controller,
+    required this.picker,
+    required this.onHelp,
   });
 
-  final String title;
-  final VoidCallback? onOpenProfile;
-  final VoidCallback? onExit;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      child: Row(
-        children: [
-          if (onExit != null)
-            IconButton(
-              icon: const Icon(LucideIcons.chevronLeft, size: 22, color: AppColors.text),
-              onPressed: onExit,
-              splashRadius: 24,
-            ),
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: AppColors.text,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          if (onOpenProfile != null)
-            ProfileAvatarButton(name: 'User', onTap: onOpenProfile!),
-        ],
-      ),
-    );
-  }
-}
-
-// ===================== InputForm =====================
-class _InputForm extends StatelessWidget {
-  const _InputForm({required this.controller});
-
   final ScannerController controller;
+  final ImagePicker picker;
+  final VoidCallback onHelp;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        color: AppColors.primary,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.35),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Top Badges Row
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.25),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(LucideIcons.sparkles, size: 12, color: Colors.white),
+                    SizedBox(width: 5),
+                    Text(
+                      'Pengenal menu + kesegaran matang',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.25),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.circle, size: 7, color: Color(0xFF10B981)),
+                    SizedBox(width: 5),
+                    Text(
+                      'Inferensi server',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Title
           const Text(
-            'Data Pemeriksaan',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.text),
+            'Scan Hidangan Matang',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              letterSpacing: -0.5,
+            ),
           ),
-          const SizedBox(height: 12),
-          _InputField(
-            label: 'Token QR Boks',
-            hint: 'Masukkan token QR',
-            value: controller.qrToken,
-            onChanged: controller.setQrToken,
+          const SizedBox(height: 6),
+
+          // Description
+          Text(
+            'Foto dinilai oleh model pengenal menu dan model kesegaran hidangan matang. Token QR serta suhu berasal dari pemeriksaan petugas; batch mengisi resep dan gizi bila tersedia di database.',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.white.withValues(alpha: 0.95),
+              height: 1.35,
+            ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 18),
+
+          // Input 1: Token QR
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: TextField(
+              controller: TextEditingController(text: controller.qrToken)
+                ..selection = TextSelection.collapsed(offset: controller.qrToken.length),
+              onChanged: controller.setQrToken,
+              decoration: const InputDecoration(
+                hintText: 'Masukkan token QR boks (manual)',
+                hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                border: InputBorder.none,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Inputs Row: Suhu lepas dapur & Suhu holding
           Row(
             children: [
               Expanded(
-                child: _InputField(
-                  label: 'Suhu Holding (°C)',
-                  hint: '60',
-                  value: controller.holdingTemp,
-                  onChanged: controller.setHoldingTemp,
-                  keyboardType: TextInputType.number,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: TextField(
+                    controller: TextEditingController(text: controller.releaseTemp)
+                      ..selection = TextSelection.collapsed(offset: controller.releaseTemp.length),
+                    onChanged: controller.setReleaseTemp,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      hintText: 'Suhu lepas dapur °C',
+                      hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      border: InputBorder.none,
+                    ),
+                  ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
-                child: _InputField(
-                  label: 'Suhu Lepas (°C)',
-                  hint: '75',
-                  value: controller.releaseTemp,
-                  onChanged: controller.setReleaseTemp,
-                  keyboardType: TextInputType.number,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: TextField(
+                    controller: TextEditingController(text: controller.holdingTemp)
+                      ..selection = TextSelection.collapsed(offset: controller.holdingTemp.length),
+                    onChanged: controller.setHoldingTemp,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      hintText: 'Suhu holding °C',
+                      hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      border: InputBorder.none,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Action Button Row: [ ] Mulai Pindai Porsi MBG + ? button
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: AppColors.text,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                    ),
+                    onPressed: controller.isAnalyzing
+                        ? null
+                        : () => controller.startScan(picker, context, source: ImageSource.camera),
+                    icon: controller.isAnalyzing
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.text),
+                          )
+                        : const Icon(LucideIcons.scan, size: 18, color: AppColors.text),
+                    label: Text(
+                      controller.isAnalyzing ? 'Menganalisis...' : 'Mulai Pindai Porsi MBG',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.text),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              InkWell(
+                onTap: onHelp,
+                borderRadius: BorderRadius.circular(25),
+                child: Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.25),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(LucideIcons.helpCircle, size: 20, color: Colors.white),
                 ),
               ),
             ],
@@ -221,89 +363,62 @@ class _InputForm extends StatelessWidget {
   }
 }
 
-class _InputField extends StatelessWidget {
-  const _InputField({
-    required this.label,
-    required this.hint,
-    required this.value,
-    required this.onChanged,
-    this.keyboardType = TextInputType.text,
-  });
-
-  final String label;
-  final String hint;
-  final String value;
-  final ValueChanged<String> onChanged;
-  final TextInputType keyboardType;
+// ===================== Empty Placeholder Card =====================
+class _ScanPlaceholderCard extends StatelessWidget {
+  const _ScanPlaceholderCard();
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
-        ),
-        const SizedBox(height: 6),
-        TextField(
-          controller: TextEditingController(text: value),
-          keyboardType: keyboardType,
-          onChanged: onChanged,
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: const TextStyle(color: AppColors.textMuted),
-            filled: true,
-            fillColor: AppColors.surfaceMuted,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(LucideIcons.camera, size: 26, color: Color(0xFF94A3B8)),
             ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ===================== ScanButton =====================
-class _ScanButton extends StatelessWidget {
-  const _ScanButton({required this.controller, required this.picker});
-
-  final ScannerController controller;
-  final ImagePicker picker;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: SizedBox(
-        width: double.infinity,
-        height: 56,
-        child: FilledButton.icon(
-          onPressed: controller.isAnalyzing
-              ? null
-              : () => controller.startScan(picker, context),
-          icon: controller.isAnalyzing
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Icon(LucideIcons.camera, size: 22),
-          label: Text(
-            controller.isAnalyzing ? 'Menganalisis...' : 'Mulai Scan',
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-          ),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            foregroundColor: AppColors.text,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          ),
+            const SizedBox(height: 16),
+            const Text(
+              'Data akan muncul di sini setelah pemindaian',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.text,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Masukkan token QR serta suhu hasil pengukuran, lalu ambil foto untuk mengirimkannya ke model yang sama dengan portal web.',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-// ===================== CapturedPhotoSection =====================
+// ===================== Captured Photo Section =====================
 class _CapturedPhotoSection extends StatelessWidget {
   const _CapturedPhotoSection({required this.controller, required this.photoKey});
 
@@ -312,41 +427,30 @@ class _CapturedPhotoSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!controller.hasScanned || controller.capturedPhoto == null) return const SizedBox.shrink();
+    final photoPath = controller.capturedPhoto;
+    if (photoPath == null) return const SizedBox.shrink();
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.border),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Image.file(
-              controller.capturedPhoto! as dynamic, // XFile path
-              key: photoKey,
-              width: double.infinity,
-              height: 300,
-              fit: BoxFit.cover,
-            ),
+          Image.file(
+            File(photoPath),
+            key: photoKey,
+            width: double.infinity,
+            height: 240,
+            fit: BoxFit.cover,
           ),
-          Positioned(
-            top: 8,
-            right: 8,
-            child: IconButton(
-              icon: const Icon(LucideIcons.x, color: Colors.white, size: 22),
-              onPressed: controller.resetScan,
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.black.withValues(alpha: 0.5),
-                shape: const CircleBorder(),
-              ),
-            ),
-          ),
-          if (controller.isAnalyzing)
+          if (controller.localDetections.isNotEmpty)
             Positioned.fill(
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.4),
-                child: const Center(
-                  child: CircularProgressIndicator(color: Colors.white),
-                ),
+              child: CustomPaint(
+                painter: YoloBoundingBoxPainter(detections: controller.localDetections),
               ),
             ),
         ],
@@ -355,7 +459,7 @@ class _CapturedPhotoSection extends StatelessWidget {
   }
 }
 
-// ===================== ResultSection =====================
+// ===================== Result Section =====================
 class _ResultSection extends StatelessWidget {
   const _ResultSection({required this.controller});
 
@@ -363,345 +467,96 @@ class _ResultSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scan = controller.backendScan!;
+    final scan = controller.backendScan;
+    if (scan == null) return const SizedBox.shrink();
+
+    final isLayak = scan.verdict == Verdict.layak;
+
     return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Verdict badge
-          _VerdictBadge(verdict: scan.verdict),
-          const SizedBox(height: 16),
-          // Temperature info
+          // Verdict Header
           Row(
             children: [
-              Expanded(child: _InfoChip(label: 'Suhu Lepas', value: '${scan.releaseTemp.toStringAsFixed(1)}°C')),
-              const SizedBox(width: 12),
-              Expanded(child: _InfoChip(label: 'Suhu Holding', value: '${scan.holdTemp.toStringAsFixed(1)}°C')),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isLayak ? const Color(0xFFDCFCE7) : const Color(0xFFFEF2F2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isLayak ? LucideIcons.checkCircle2 : LucideIcons.alertTriangle,
+                      size: 14,
+                      color: isLayak ? const Color(0xFF15803D) : const Color(0xFFB91C1C),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      scan.verdictLabel.isNotEmpty ? scan.verdictLabel : (isLayak ? '100% Layak' : 'Peringatan Mutu'),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: isLayak ? const Color(0xFF15803D) : const Color(0xFFB91C1C),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              Text(
+                'Skor: ${(scan.score * 100).round()}%',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.text),
+              ),
             ],
           ),
-          const SizedBox(height: 16),
-          // Checks
-          const Text('Checklist', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.text)),
-          const SizedBox(height: 8),
-          ...scan.checks.map((c) => _CheckRow(check: c)),
-          const SizedBox(height: 16),
-          // AI Class & Confidence
-          Row(
-            children: [
-              Expanded(child: _InfoChip(label: 'Kelas AI', value: scan.aiClass)),
-              const SizedBox(width: 12),
-              Expanded(child: _InfoChip(label: 'Kepercayaan', value: '${(scan.aiConfidence * 100).round()}%')),
-            ],
+          const SizedBox(height: 12),
+          Text(
+            scan.menuDisplay ?? scan.menuName ?? 'Menu Terdeteksi',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.text),
           ),
-          const SizedBox(height: 16),
-          // Compartments if any
-          if (scan.compartments != null && scan.compartments!.isNotEmpty) ...[
-            const Text('Kompartemen', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.text)),
-            const SizedBox(height: 8),
-            ...scan.compartments!.map((c) => _CompartmentRow(compartment: c)),
-            const SizedBox(height: 16),
-          ],
-          // Nutrition / Kelayakan tabs content
-          if (controller.activeTab == ScanMode.nutrisi && scan.nutrisi != null)
-            _NutrisiContent(nutrisi: scan.nutrisi!),
-          if (controller.activeTab == ScanMode.kelayakan && scan.kelayakan != null)
-            _KelayakanContent(kelayakan: scan.kelayakan!),
-        ],
-      ),
-    );
-  }
-}
-
-class _VerdictBadge extends StatelessWidget {
-  const _VerdictBadge({required this.verdict});
-
-  final Verdict verdict;
-
-  @override
-  Widget build(BuildContext context) {
-    final (color, label) = _verdictInfo(verdict);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(_verdictIcon(verdict), color: Colors.white, size: 20),
-          const SizedBox(width: 8),
-          Text(label, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800)),
-        ],
-      ),
-    );
-  }
-
-  (Color, String) _verdictInfo(Verdict v) {
-    switch (v) {
-      case Verdict.layak:
-        return (AppColors.green, 'Layak Konsumsi');
-      case Verdict.waspada:
-        return (AppColors.amber, 'Perlu Verifikasi');
-      case Verdict.ditolak:
-        return (AppColors.red, 'Tidak Layak');
-    }
-  }
-
-  IconData _verdictIcon(Verdict v) {
-    switch (v) {
-      case Verdict.layak:
-        return LucideIcons.checkCircle2;
-      case Verdict.waspada:
-        return LucideIcons.alertTriangle;
-      case Verdict.ditolak:
-        return LucideIcons.xCircle;
-    }
-  }
-}
-
-class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceMuted,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.text)),
-        ],
-      ),
-    );
-  }
-}
-
-class _CheckRow extends StatelessWidget {
-  const _CheckRow({required this.check});
-
-  final ScanCheck check;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(check.ok ? LucideIcons.check : LucideIcons.x,
-              size: 18, color: check.ok ? AppColors.green : AppColors.red),
-          const SizedBox(width: 8),
-          Expanded(child: Text(check.label, style: const TextStyle(fontSize: 13, color: AppColors.text))),
-          if (check.note.isNotEmpty)
-            Text(check.note, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-        ],
-      ),
-    );
-  }
-}
-
-class _CompartmentRow extends StatelessWidget {
-  const _CompartmentRow({required this.compartment});
-
-  final CompartmentMatch compartment;
-
-  @override
-  Widget build(BuildContext context) {
-    final statusColor = _statusColor(compartment.status);
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceMuted,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(color: statusColor, borderRadius: BorderRadius.circular(8)),
-            child: Text('${compartment.index + 1}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+          Text(
+            (scan.note != null && scan.note!.isNotEmpty) ? scan.note! : 'Hidangan telah diperiksa sesuai SOP BGN.',
+            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.3),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(compartment.predicted ?? 'Kosong',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.text)),
-                Text('${compartment.component ?? ''} • ${(compartment.confidence * 100).round()}%',
-                    style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text(
-              compartment.status,
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: statusColor),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'match':
-        return AppColors.green;
-      case 'review':
-        return AppColors.amber;
-      case 'mismatch':
-        return AppColors.red;
-      case 'empty':
-        return AppColors.textSecondary;
-      default:
-        return AppColors.textSecondary;
-    }
-  }
-}
-
-class _NutrisiContent extends StatelessWidget {
-  const _NutrisiContent({required this.nutrisi});
-
-  final NutrisiReport nutrisi;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Rincian Nutrisi', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.text)),
-        const SizedBox(height: 12),
-        ...nutrisi.rincianBahan.map((b) => _NutrientRow(bahan: b)),
-        const SizedBox(height: 12),
-        _MacroRow(label: 'Kalori', value: '${nutrisi.makronutrisi.kaloriTotal.round()} kkal'),
-        _MacroRow(label: 'Protein', value: '${nutrisi.makronutrisi.protein.round()} g'),
-        _MacroRow(label: 'Karbohidrat', value: '${nutrisi.makronutrisi.karbohidrat.round()} g'),
-        _MacroRow(label: 'Lemak', value: '${nutrisi.makronutrisi.lemak.round()} g'),
-        _MacroRow(label: 'Serat', value: '${nutrisi.makronutrisi.serat.round()} g'),
-        const SizedBox(height: 8),
-        Text(nutrisi.ringkasanGizi, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-      ],
-    );
-  }
-}
-
-class _KelayakanContent extends StatelessWidget {
-  const _KelayakanContent({required this.kelayakan});
-
-  final KelayakanReport kelayakan;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _DetailRow(label: 'Menu', value: kelayakan.namaHidangan),
-        _DetailRow(label: 'Status', value: kelayakan.statusKelayakan),
-        _DetailRow(label: 'Skor Kesegaran', value: '${kelayakan.skorKesegaran.toStringAsFixed(1)}'),
-        const SizedBox(height: 8),
-        const Text('Indikator Visual:', style: TextStyle(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 4),
-        ...kelayakan.indikatorVisual.map((i) => Padding(
-              padding: const EdgeInsets.only(left: 16, bottom: 2),
-              child: Text('• $i', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-            )),
-        if (kelayakan.peringatanKeamanan != null) ...[
-          const SizedBox(height: 8),
-          Text('Peringatan: ${kelayakan.peringatanKeamanan}', style: const TextStyle(color: AppColors.red, fontSize: 12)),
-        ],
-        const SizedBox(height: 8),
-        Text('Rekomendasi: ${kelayakan.rekomendasi}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-      ],
-    );
-  }
-}
-
-class _NutrientRow extends StatelessWidget {
-  const _NutrientRow({required this.bahan});
-
-  final NutrisiBahan bahan;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Expanded(child: Text(bahan.bahan, style: const TextStyle(fontSize: 13, color: AppColors.text))),
-          Text('${bahan.porsiEstimasi} (${bahan.weightG.toStringAsFixed(1)}g)',
-              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          const Divider(height: 24),
+          // Checks list
+          ...scan.checks.map((c) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    Icon(
+                      c.ok ? LucideIcons.check : LucideIcons.x,
+                      size: 14,
+                      color: c.ok ? const Color(0xFF15803D) : const Color(0xFFB91C1C),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${c.label}: ${c.note}',
+                        style: const TextStyle(fontSize: 12, color: AppColors.text),
+                      ),
+                    ),
+                  ],
+                ),
+              )),
         ],
       ),
     );
   }
 }
 
-class _MacroRow extends StatelessWidget {
-  const _MacroRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-          Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.text)),
-        ],
-      ),
-    );
-  }
-}
-
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          SizedBox(width: 120, child: Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w500))),
-          Expanded(child: Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.text))),
-        ],
-      ),
-    );
-  }
-}
-
-// ===================== ErrorSection =====================
+// ===================== Error Section =====================
 class _ErrorSection extends StatelessWidget {
   const _ErrorSection({required this.error, required this.onRetry});
 
@@ -711,146 +566,23 @@ class _ErrorSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.redSoft,
+        color: const Color(0xFFFEF2F2),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.red.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(LucideIcons.alertCircle, color: AppColors.red, size: 20),
-              const SizedBox(width: 8),
-              Expanded(child: Text(error, style: const TextStyle(color: AppColors.red, fontSize: 13))),
-            ],
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: onRetry,
-              child: const Text('Coba Lagi'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ===================== BottomTabBar =====================
-class _BottomTabBar extends StatelessWidget {
-  const _BottomTabBar({required this.controller});
-
-  final ScannerController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: const Color(0xFFFCA5A5)),
       ),
       child: Row(
         children: [
-          Expanded(
-            child: _TabButton(
-              label: 'Gizi',
-              active: controller.activeTab == ScanMode.nutrisi,
-              onTap: () => controller.setActiveTab(ScanMode.nutrisi),
-            ),
-          ),
-          Expanded(
-            child: _TabButton(
-              label: 'Kelayakan',
-              active: controller.activeTab == ScanMode.kelayakan,
-              onTap: () => controller.setActiveTab(ScanMode.kelayakan),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TabButton extends StatelessWidget {
-  const _TabButton({required this.label, required this.active, required this.onTap});
-
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: active ? AppColors.primary : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: active ? AppColors.text : AppColors.textSecondary,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ===================== ActionButtons =====================
-class _ActionButtons extends StatelessWidget {
-  const _ActionButtons({required this.controller});
-
-  final ScannerController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: controller.isChatOpen ? null : () => controller.openChat(),
-              icon: const Icon(LucideIcons.messageSquare, size: 20),
-              label: const Text('AI Chat'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.primary,
-                side: const BorderSide(color: AppColors.primary),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-            ),
-          ),
+          const Icon(LucideIcons.alertTriangle, size: 20, color: Color(0xFFB91C1C)),
           const SizedBox(width: 12),
           Expanded(
-            child: OutlinedButton.icon(
-              onPressed: controller.isGuideOpen ? null : () => controller.openGuide(),
-              icon: const Icon(LucideIcons.helpCircle, size: 20),
-              label: const Text('Panduan'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.textSecondary,
-                side: const BorderSide(color: AppColors.border),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-            ),
+            child: Text(error, style: const TextStyle(fontSize: 12, color: Color(0xFFB91C1C))),
+          ),
+          TextButton(
+            onPressed: onRetry,
+            child: const Text('Coba Lagi', style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFFB91C1C))),
           ),
         ],
       ),

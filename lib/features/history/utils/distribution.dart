@@ -1,3 +1,19 @@
+class ClassInput {
+  const ClassInput({
+    required this.id,
+    required this.name,
+    required this.quota,
+    required this.hadir,
+    required this.sakit,
+  });
+
+  final String id;
+  final String name;
+  final int quota;
+  final int hadir;
+  final int sakit;
+}
+
 class ClassReconciliation {
   const ClassReconciliation({
     required this.id,

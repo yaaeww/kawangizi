@@ -1,5 +1,3 @@
-import 'package:kawangizi_mobile/core/utils/relative_time.dart';
-
 enum UserRole { guru }
 
 class UserProfile {

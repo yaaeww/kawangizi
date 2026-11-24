@@ -98,10 +98,23 @@ class KelayakanReport {
 }
 
 class NutrisiBahan {
-  const NutrisiBahan({required this.bahan, required this.porsiEstimasi, required this.weightG});
+  const NutrisiBahan({
+    String? bahan,
+    String? nama,
+    String? porsiEstimasi,
+    double? weightG,
+    double? gram,
+    this.kalori,
+    this.kategori,
+  })  : bahan = bahan ?? nama ?? '',
+        porsiEstimasi = porsiEstimasi ?? '',
+        weightG = weightG ?? gram ?? 0.0;
+
   final String bahan;
   final String porsiEstimasi;
   final double weightG;
+  final num? kalori;
+  final String? kategori;
 }
 
 class MakronutrisiReport {
@@ -117,21 +130,42 @@ class MakronutrisiReport {
   final double karbohidrat;
   final double lemak;
   final double serat;
+
+  static const defaultReport = MakronutrisiReport(
+    kaloriTotal: 580.0,
+    protein: 32.0,
+    karbohidrat: 68.0,
+    lemak: 14.0,
+    serat: 7.0,
+  );
 }
 
 class NutrisiReport {
   const NutrisiReport({
-    required this.namaHidangan,
-    required this.estimasiBeratPorsi,
-    required this.rincianBahan,
-    required this.makronutrisi,
-    required this.ringkasanGizi,
+    this.namaHidangan = 'Paket Nasi Ayam Geprek',
+    this.estimasiBeratPorsi = '450g',
+    this.rincianBahan = const [],
+    this.makronutrisi = MakronutrisiReport.defaultReport,
+    this.ringkasanGizi = 'Gizi seimbang',
+    this.daftarBahan,
+    this.kaloriTotal,
+    this.proteinTotal,
+    this.karbohidratTotal,
+    this.lemakTotal,
+    this.seratTotal,
   });
+
   final String namaHidangan;
   final String estimasiBeratPorsi;
   final List<NutrisiBahan> rincianBahan;
   final MakronutrisiReport makronutrisi;
   final String ringkasanGizi;
+  final List<NutrisiBahan>? daftarBahan;
+  final double? kaloriTotal;
+  final double? proteinTotal;
+  final double? karbohidratTotal;
+  final double? lemakTotal;
+  final double? seratTotal;
 }
 
 class ScanResult {
@@ -162,10 +196,10 @@ class ScanResult {
     this.rating,
     this.feedback,
     this.note,
-    required this.aiClass,
-    required this.aiConfidence,
+    this.aiClass = 'tray_lengkap',
+    this.aiConfidence = 0.95,
     this.aiLatencyMs,
-    required this.scanMode,
+    this.scanMode = ScanMode.nutrisi,
     this.duplicateImage,
     this.kelayakan,
     this.nutrisi,

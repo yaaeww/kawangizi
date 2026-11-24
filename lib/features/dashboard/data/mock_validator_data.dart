@@ -80,18 +80,10 @@ final List<QuickActionItem> mockQuickActionsGuru = [
     flow: [
       'Pisahkan dan amankan boks yang bermasalah.',
       'Unggah foto bukti pada modul insiden.',
-      'Kirim eskalasi ke Satuan Tugas MBG untuk penghentian batch.',
+      'Kirim eskalasi ke Satuan Pengawas untuk penghentian batch.',
     ],
   ),
 ];
-
-const _guruMacroEstimate = {
-  'energi': 545,
-  'protein': 34,
-  'karbohidrat': 68,
-  'lemak': 14,
-  'serat': 7.1,
-};
 
 final List<NutrientCapsuleItem> mockNutrientCapsulesGuru = [
   NutrientCapsuleItem(

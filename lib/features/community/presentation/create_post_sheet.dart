@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import 'package:kawangizi_mobile/core/theme/app_colors.dart';
-import 'package:kawangizi_mobile/features/auth/domain/backend_user.dart';
 import 'package:kawangizi_mobile/features/auth/presentation/auth_controller.dart' show AuthController;
 import '../domain/community_models.dart' show CommunityPost, availableTags, communityTagConfigs;
 import '../presentation/community_controller.dart' show CommunityController;

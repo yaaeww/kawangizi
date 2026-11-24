@@ -61,5 +61,14 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void switchSchool({required String schoolName, required String npsn}) {
+    if (_user == null) return;
+    _user = _user!.copyWith(
+      schoolName: schoolName,
+      npsn: npsn,
+    );
+    notifyListeners();
+  }
+
   bool hasPermission(String permission) => _permissions.contains(permission);
 }

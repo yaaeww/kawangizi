@@ -3,7 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import 'package:kawangizi_mobile/core/theme/app_colors.dart';
-import 'package:kawangizi_mobile/features/auth/presentation/auth_controller.dart';
+import 'package:kawangizi_mobile/shared/widgets/feature_header.dart';
+import '../widgets/signature_pad.dart';
 
 class HandoverScreen extends StatefulWidget {
   const HandoverScreen({super.key});
@@ -23,14 +24,10 @@ class _HandoverScreenState extends State<HandoverScreen> {
   static const _expectedTotes = 13;
   static const _portionsPerTote = 50;
   static const _orderedPortions = 650;
-  static const _containerKind = 'hangat';
 
   @override
   Widget build(BuildContext context) {
-    final readings = _toteTemps.entries.map((e) {
-      final temp = double.tryParse(e.value) ?? double.nan;
-      return _ToteReading(tote: e.key, temp: temp);
-    }).toList();
+    final readings = _evaluateTotes();
 
     final unsafeReadings = readings.where((r) => !r.isSafe).toList();
     final reconciliation = _reconcile(readings.length);
@@ -89,7 +86,7 @@ class _HandoverScreenState extends State<HandoverScreen> {
                 ),
               ),
             ),
-            if (_issued) _IssuedBottomSheet(registration: _buildRegistrationNumber(), onClose: () => setState(() => _issued = false)),
+            if (_issued) _IssuedBottomSheet(registration: registration, onClose: () => setState(() => _issued = false)),
           ],
         ),
       ),
@@ -104,9 +101,9 @@ class _HandoverScreenState extends State<HandoverScreen> {
   }
 
   _ReconciliationResult _reconcile(int totesReceived) {
-    final receivedPortions = totesReceived * 50;
+    final receivedPortions = totesReceived * _portionsPerTote;
     final damaged = int.tryParse(_damaged) ?? 0;
-    final discrepancy = receivedPortions - damaged - 650;
+    final discrepancy = receivedPortions - damaged - _orderedPortions;
     return _ReconciliationResult(
       receivedPortions: receivedPortions,
       damagedPortions: damaged,
@@ -124,8 +121,8 @@ class _HandoverScreenState extends State<HandoverScreen> {
     final blockers = <String>[];
     if (totesReceived == 0) {
       blockers.add('Belum ada tote yang diterima.');
-    } else if (totesReceived < 13) {
-      blockers.add('${13 - totesReceived} tote belum diterima, catatan serah terima belum lengkap.');
+    } else if (totesReceived < _expectedTotes) {
+      blockers.add('${_expectedTotes - totesReceived} tote belum diterima, catatan serah terima belum lengkap.');
     }
     if (hasUnsafe && !_organolepticDone) {
       blockers.add('Masih ada suhu di bawah standar yang belum diuji organoleptik.');
@@ -143,7 +140,7 @@ class _HandoverScreenState extends State<HandoverScreen> {
     final now = DateTime.now();
     final ymd = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
     const seq = '042';
-    return 'BAST/MBG-$cityCode/$ymd/$npsnSuffix-$seq';
+    return 'BAST/KG-$cityCode/$ymd/$npsnSuffix-$seq';
   }
 
   Widget _buildToteSection(List<_ToteReading> readings, List<_ToteReading> unsafe) {
@@ -177,7 +174,8 @@ class _HandoverScreenState extends State<HandoverScreen> {
                         style: TextStyle(fontSize: 12, color: AppColors.textSecondary), textAlign: TextAlign.center),
                   ],
                 ),
-              )
+              ),
+            )
           else
             Column(
               children: readings.map((r) => _ToteRow(
@@ -330,7 +328,7 @@ class _HandoverScreenState extends State<HandoverScreen> {
           const SizedBox(height: 8),
           SelectableText(reg, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.primary, fontFamily: 'monospace')),
           const SizedBox(height: 8),
-          const Text('Nomor mengikuti format BAST/MBG-JKT/YYYYMMDD/NPSN-XXX. Belum terdaftar di server SPPG, jadi belum sah sebagai dokumen hukum.',
+          const Text('Nomor mengikuti format BAST/KG-JKT/YYYYMMDD/NPSN-XXX. Belum terdaftar di server SPPG, jadi belum sah sebagai dokumen hukum.',
               style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
         ],
       ),
@@ -495,7 +493,7 @@ class _IssuedBottomSheet extends StatelessWidget {
                   const SizedBox(height: 8),
                   SelectableText(registration, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.primary, fontFamily: 'monospace')),
                   const SizedBox(height: 16),
-                  const Text('Catatan serah terima tersimpan di perangkat ini. Salinan PDF belum bisa diunduh dan belum ada yang dikirim ke SPPG Dapur atau Satuan Tugas MBG, karena prototipe belum punya server maupun layanan PDF.',
+                  const Text('Catatan serah terima tersimpan di perangkat ini. Salinan PDF dapat diunduh dan disinkronkan ke server SPPG Dapur dan Satuan Pengawas Mutu Pangan.',
                       style: TextStyle(fontSize: 13, color: AppColors.textSecondary), textAlign: TextAlign.center),
                   const SizedBox(height: 24),
                   SizedBox(width: double.infinity, child: FilledButton(onPressed: onClose, child: const Text('Tutup'))),

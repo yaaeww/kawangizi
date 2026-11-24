@@ -1,0 +1,5 @@
+karbohidrat
+protein
+sayur
+buah
+susu

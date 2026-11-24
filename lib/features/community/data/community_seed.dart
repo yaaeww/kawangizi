@@ -1,7 +1,4 @@
-import 'package:uuid/uuid.dart';
 import '../domain/community_models.dart';
-
-final _uuid = Uuid();
 
 final List<CommunityPost> initialCommunityPosts = [
   CommunityPost(
@@ -64,7 +61,7 @@ final List<CommunityPost> initialCommunityPosts = [
     createdAt: DateTime.now().subtract(const Duration(days: 1)).toIso8601String(),
     tag: 'Distribusi',
     tagColor: '#D97706',
-    bg: '#FEF3C7',
+    tagBg: '#FEF3C7',
     title: 'Info: Armada B-9281-KBA Terganggu Macet',
     content: 'Armada B-9281-KBA mengalami kemacetan di Jalan Sudirman. Perkiraan tiba 07:25 WIB. Mohon disampaikan ke sekolah tujuan.',
     mediaUri: null,

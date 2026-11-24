@@ -1,21 +1,5 @@
 import 'package:kawangizi_mobile/features/history/utils/distribution.dart';
 
-class ClassInput {
-  const ClassInput({
-    required this.id,
-    required this.name,
-    required this.quota,
-    required this.hadir,
-    required this.sakit,
-  });
-
-  final String id;
-  final String name;
-  final int quota;
-  final int hadir;
-  final int sakit;
-}
-
 final List<ClassInput> mockClasses = [
   ClassInput(id: '1A', name: 'Kelas 1A', quota: 28, hadir: 27, sakit: 1),
   ClassInput(id: '1B', name: 'Kelas 1B', quota: 30, hadir: 30, sakit: 0),

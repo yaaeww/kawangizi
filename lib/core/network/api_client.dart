@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path_provider/path_provider.dart';
 
 import 'api_config.dart';
@@ -29,7 +28,7 @@ String apiErrorMessage(Object error) {
     }
     if (error.type == DioExceptionType.connectionError ||
         error.type == DioExceptionType.connectionTimeout) {
-      return 'Tidak dapat terhubung ke server KawanGizi.';
+      return 'Tidak dapat terhubung ke server KawanGizi (Kendala jaringan atau CORS browser).';
     }
     return error.message ?? 'Terjadi kesalahan pada server.';
   }
@@ -37,24 +36,29 @@ String apiErrorMessage(Object error) {
 }
 
 class ApiClient {
-  ApiClient._(this._dio, this._refreshDio);
+  ApiClient._(this._dio, this._refreshDio, this._cookieJar);
 
   final Dio _dio;
   final Dio _refreshDio;
+  final CookieJar? _cookieJar;
 
-  String? _accessToken;
+  String? accessToken;
   Future<bool>? _refreshFuture;
 
-  String? get accessToken => _accessToken;
-  set accessToken(String? value) => _accessToken = value;
-
   static Future<ApiClient> create() async {
-    final directory = await getApplicationSupportDirectory();
-    final cookiePath = '${directory.path}${Platform.pathSeparator}cookies';
-    final cookieJar = PersistCookieJar(
-      ignoreExpires: false,
-      storage: FileStorage(cookiePath),
-    );
+    CookieJar? cookieJar;
+    if (!kIsWeb) {
+      try {
+        final directory = await getApplicationSupportDirectory();
+        final cookiePath = '${directory.path}/cookies';
+        cookieJar = PersistCookieJar(
+          ignoreExpires: false,
+          storage: FileStorage(cookiePath),
+        );
+      } catch (_) {
+        cookieJar = CookieJar();
+      }
+    }
 
     final options = BaseOptions(
       baseUrl: ApiConfig.baseUrl,
@@ -66,14 +70,16 @@ class ApiClient {
 
     final dio = Dio(options);
     final refreshDio = Dio(options);
-    dio.interceptors.add(CookieManager(cookieJar));
-    refreshDio.interceptors.add(CookieManager(cookieJar));
+    if (!kIsWeb && cookieJar != null) {
+      dio.interceptors.add(CookieManager(cookieJar));
+      refreshDio.interceptors.add(CookieManager(cookieJar));
+    }
 
-    final client = ApiClient._(dio, refreshDio);
+    final client = ApiClient._(dio, refreshDio, cookieJar);
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (request, handler) {
-          final token = client._accessToken;
+          final token = client.accessToken;
           if (token != null && token.isNotEmpty) {
             request.headers['Authorization'] = 'Bearer $token';
           }
@@ -100,6 +106,8 @@ class ApiClient {
             handler.resolve(response);
           } on DioException catch (retryError) {
             handler.next(retryError);
+          } catch (_) {
+            handler.next(error);
           }
         },
       ),
@@ -118,6 +126,14 @@ class ApiClient {
 
   Future<Response<dynamic>> postForm(String path, FormData data) {
     return _dio.post(path, data: data);
+  }
+
+  Future<Response<dynamic>> delete(String path, {Object? data}) {
+    return _dio.delete(path, data: data);
+  }
+
+  Future<Response<dynamic>> put(String path, {Object? data}) {
+    return _dio.put(path, data: data);
   }
 
   Future<bool> refresh() async {
@@ -139,7 +155,7 @@ class ApiClient {
       if (body is Map && body['success'] == true && body['data'] is Map) {
         final token = body['data']['accessToken']?.toString();
         if (token != null && token.isNotEmpty) {
-          _accessToken = token;
+          accessToken = token;
           return true;
         }
       }
@@ -151,9 +167,7 @@ class ApiClient {
 
   Future<void> clearCookies() async {
     try {
-      final directory = await getApplicationSupportDirectory();
-      final cookiePath = '${directory.path}${Platform.pathSeparator}cookies';
-      await PersistCookieJar(storage: FileStorage(cookiePath)).deleteAll();
+      await _cookieJar?.deleteAll();
     } catch (_) {
       // Ignore cookie cleanup failures.
     }

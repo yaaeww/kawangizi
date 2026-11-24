@@ -4,20 +4,16 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import 'package:kawangizi_mobile/core/theme/app_colors.dart';
-import 'package:kawangizi_mobile/core/utils/relative_time.dart';
-import 'package:kawangizi_mobile/features/auth/domain/backend_user.dart';
 import 'package:kawangizi_mobile/features/auth/presentation/auth_controller.dart'
     show AuthController;
+import 'package:kawangizi_mobile/shared/widgets/delete_confirmation_dialog.dart';
+import 'package:kawangizi_mobile/shared/widgets/feature_header.dart';
 import '../domain/community_models.dart'
-    show CommunityPost, CommunityComment, availableTags, communityTagConfigs;
+    show CommunityPost, communityTagConfigs, TagConfig;
 import 'community_controller.dart'
     show CommunityController;
-import 'thread_detail_screen.dart'
-    show ThreadDetailScreen;
 import 'create_post_sheet.dart'
     show CreatePostSheet;
-import 'contextual_ai_chat_sheet.dart'
-    show ContextualAiChatSheet;
 
 class CommunityScreen extends StatefulWidget {
   const CommunityScreen({super.key});
@@ -34,51 +30,38 @@ class _CommunityScreenState extends State<CommunityScreen> {
   bool _isDeleteModalVisible = false;
   CommunityPost? _postToDelete;
   bool _isDeleting = false;
-  int _currentPage = 1;
-  bool _isLoadingMore = false;
-  bool _hasMoreData = true;
-  bool _isRefreshing = false;
+  final ScrollController _scrollController = ScrollController();
 
-  static const _pageSize = 10;
-  static const _filterTags = ['Semua', 'SOP Suhu', 'Rekap Presensi', 'Menu Alergi', 'Pindai AI', 'Distribusi', 'Kebersihan'];
+  static const _filterTags = [
+    'Semua',
+    'SOP Suhu',
+    'Rekap Presensi',
+    'Menu Alergi',
+    'Pindai AI',
+    'Distribusi',
+    'Kebersihan',
+  ];
 
   @override
   void initState() {
     super.initState();
-    _loadMore();
+    _scrollController.addListener(_onScroll);
   }
 
-  Future<void> _loadMore({bool refresh = false}) async {
-    if (refresh) {
-      setState(() {
-        _currentPage = 1;
-        _hasMoreData = true;
-        _isRefreshing = true;
-      });
-    } else if (!_hasMoreData || _isLoadingMore) return;
-
-    setState(() => _isLoadingMore = true);
-
-    // Simulate pagination delay
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    final controller = context.read<CommunityController>();
-    final allPosts = controller.posts;
-    final filtered = _filterPosts(allPosts);
-    final total = filtered.length;
-    final start = (refresh ? 0 : _currentPage - 1) * 10;
-    final end = (start + 10).clamp(0, total);
-
-    if (refresh) {
-      // In a real app, you'd fetch from server. Here we just use local data.
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      context.read<CommunityController>().loadMore();
     }
+  }
 
-    setState(() {
-      _currentPage = refresh ? 1 : _currentPage + 1;
-      _hasMoreData = end < total;
-      _isLoadingMore = false;
-      _isRefreshing = false;
-    });
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleRefresh() async {
+    await context.read<CommunityController>().refresh();
   }
 
   List<CommunityPost> _filterPosts(List<CommunityPost> posts) {
@@ -87,8 +70,13 @@ class _CommunityScreenState extends State<CommunityScreen> {
       filtered = filtered.where((p) => p.tag == _selectedTag).toList();
     }
     if (_searchQuery.isNotEmpty) {
-      final q = _searchQuery.toLowerCase();
-      filtered = filtered.where((p) => p.title.toLowerCase().contains(q) || p.content.toLowerCase().contains(q)).toList();
+      final q = _searchQuery.toLowerCase().trim();
+      filtered = filtered.where((p) {
+        return p.title.toLowerCase().contains(q) ||
+            p.content.toLowerCase().contains(q) ||
+            p.author.toLowerCase().contains(q) ||
+            p.school.toLowerCase().contains(q);
+      }).toList();
     }
     return filtered;
   }
@@ -122,133 +110,375 @@ class _CommunityScreenState extends State<CommunityScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
     final controller = context.watch<CommunityController>();
-    final user = auth.user;
-
-    final filteredPosts = _filterPosts(controller.posts);
-    final displayPosts = filteredPosts.take(_currentPage * 10).toList();
+    final displayPosts = _filterPosts(controller.posts);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            FeatureHeader(
-              title: 'Komunitas',
-              onOpenProfile: () => context.go('/profile'),
-            ),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: () => _loadMore(refresh: true),
-                child: CustomScrollView(
-                  slivers: [
-                    // Filter tags
-                    SliverToBoxAdapter(
-                      child: Container(
-                        height: 56,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _filterTags.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 8),
-                          itemBuilder: (_, i) {
-                            final tag = _filterTags[i];
-                            final selected = tag == _selectedTag;
-                            return FilterChip(
-                              label: Text(tag, style: TextStyle(color: selected ? Colors.white : AppColors.textSecondary, fontWeight: FontWeight.w600)),
-                              selected: selected,
-                              onSelected: (_) => setState(() => _selectedTag = tag),
-                              selectedColor: AppColors.primary,
-                              backgroundColor: Colors.white,
-                              side: const BorderSide(color: AppColors.border),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                            );
-                          },
-                        ),
+      backgroundColor: const Color(0xFFF9F8F6),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Column(
+              children: [
+                // Top App Bar Header (Exact Title: "Komunitas")
+                FeatureHeader(
+                  title: 'Komunitas',
+                  onOpenProfile: () => context.go('/profile'),
+                ),
+
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _handleRefresh,
+                    color: AppColors.primary,
+                    child: CustomScrollView(
+                      controller: _scrollController,
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
                       ),
-                    ),
-                    // Search
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                        child: TextField(
-                          onChanged: (v) => setState(() => _searchQuery = v),
-                          decoration: InputDecoration(
-                            hintText: 'Cari diskusi...',
-                            hintStyle: const TextStyle(color: AppColors.textMuted),
-                            prefixIcon: const Icon(LucideIcons.search, color: AppColors.textSecondary),
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Create button
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: _handleCreatePost,
-                            icon: const Icon(LucideIcons.plus, size: 20),
-                            label: const Text('Buat Diskusi Baru'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.primary,
-                              side: const BorderSide(color: AppColors.primary),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      slivers: [
+                        // Header section: Banner, Search bar, Tag chips
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // 1. Banner Card (Exact Expo Design: White Card + Badges + Amber Button)
+                                _buildBannerCard(),
+
+                                const SizedBox(height: 14),
+
+                                // 2. Search Bar
+                                _buildSearchBox(),
+
+                                const SizedBox(height: 12),
+
+                                // 3. Filter Tag Chips
+                                _buildFilterChips(),
+
+                                const SizedBox(height: 14),
+                              ],
                             ),
                           ),
                         ),
+
+                        // Posts List
+                        if (controller.loading && displayPosts.isEmpty)
+                          const SliverToBoxAdapter(
+                            child: Padding(
+                              padding: EdgeInsets.all(40),
+                              child: Center(
+                                child: CircularProgressIndicator(color: AppColors.primary),
+                              ),
+                            ),
+                          )
+                        else if (displayPosts.isEmpty)
+                          SliverToBoxAdapter(
+                            child: _buildEmptyState(),
+                          )
+                        else
+                          SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                              (context, index) {
+                                final post = displayPosts[index];
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  child: _PostCard(
+                                    post: post,
+                                    currentUserId: auth.user?.id,
+                                    onTap: () => context.go('/community/thread/${post.id}'),
+                                    onLike: () => context.read<CommunityController>().toggleLikePost(post.id),
+                                    onEdit: () => _handleEditPost(post),
+                                    onDelete: () => _handleDeletePost(post),
+                                  ),
+                                );
+                              },
+                              childCount: displayPosts.length,
+                            ),
+                          ),
+
+                        if (controller.loadingMore)
+                          const SliverToBoxAdapter(
+                            child: Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Center(
+                                child: CircularProgressIndicator(color: AppColors.primary),
+                              ),
+                            ),
+                          ),
+
+                        // Bottom padding to ensure content scrolls above floating nav bar
+                        const SliverToBoxAdapter(
+                          child: SizedBox(height: 120),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Sheets / Dialogs
+          if (_isCreateModalOpen)
+            CreatePostSheet(
+              onClose: () => setState(() => _isCreateModalOpen = false),
+              onSubmit: () => setState(() => _isCreateModalOpen = false),
+              editingPost: null,
+            ),
+          if (_editingPost != null)
+            CreatePostSheet(
+              onClose: () => setState(() => _editingPost = null),
+              onSubmit: () => setState(() => _editingPost = null),
+              editingPost: _editingPost,
+            ),
+          if (_isDeleteModalVisible && _postToDelete != null)
+            DeleteConfirmationDialog(
+              title: 'Hapus Diskusi',
+              message: 'Apakah Anda yakin ingin menghapus postingan "${_postToDelete!.title}"?',
+              onConfirm: _confirmDelete,
+              onCancel: () => setState(() => _isDeleteModalVisible = false),
+              isDeleting: _isDeleting,
+            ),
+        ],
+      ),
+    );
+  }
+
+  // Banner Card matching Expo 1:1
+  Widget _buildBannerCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFF1F5F9)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Badges row
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(LucideIcons.sparkles, size: 13, color: Color(0xFFD97706)),
+                    SizedBox(width: 5),
+                    Text(
+                      'Forum Guru Validator MBG',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFFD97706),
                       ),
                     ),
-                    // Posts list
-                    SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          if (index >= displayPosts.length) {
-                            if (_hasMoreData && !_isLoadingMore) {
-                              Future.microtask(_loadMore);
-                              return const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()));
-                            }
-                            return const SizedBox.shrink();
-                          }
-                          final post = displayPosts[index];
-                          return _PostCard(
-                            post: post,
-                            currentUserId: auth.user?.id,
-                            onTap: () => context.go('/community/thread/${post.id}'),
-                            onLike: () => context.read<CommunityController>().toggleLikePost(post.id),
-                            onEdit: () => setState(() => _editingPost = displayPosts[index]),
-                            onDelete: () => _handleDeletePost(displayPosts[index]),
-                          );
-                        },
-                        childCount: displayPosts.length + (_hasMoreData ? 1 : 0),
-                      ),
-                    ),
-                    if (_isLoadingMore)
-                      const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))),
                   ],
                 ),
               ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(LucideIcons.shieldCheck, size: 13, color: Color(0xFF10B981)),
+                    SizedBox(width: 5),
+                    Text(
+                      '148 Sekolah Terverifikasi',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF059669),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Title
+          const Text(
+            'Ruang Kolaborasi & Tanya Jawab SOP',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF1E293B),
+              letterSpacing: -0.3,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 6),
+
+          // Subtitle
+          const Text(
+            'Berbagi praktik baik, tips penanganan boks makanan, dan solusi kendala distribusi bersama sesama guru validator.',
+            style: TextStyle(
+              fontSize: 12.5,
+              color: Color(0xFF64748B),
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Action Button: Mulai Diskusi Baru
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                elevation: 2,
+                shadowColor: AppColors.primary.withValues(alpha: 0.35),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              onPressed: _handleCreatePost,
+              icon: const Icon(LucideIcons.plusCircle, size: 18, color: Colors.white),
+              label: const Text(
+                'Mulai Diskusi Baru',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
       ),
-      // Modals
-      child: Stack(
+    );
+  }
+
+  // Search Box matching Expo
+  Widget _buildSearchBox() {
+    return Container(
+      height: 46,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Row(
         children: [
-          if (_isCreateModalOpen) CreatePostSheet(onClose: () => setState(() => _isCreateModalOpen = false), onSubmit: () => setState(() => _isCreateModalOpen = false), editingPost: null),
-          if (_editingPost != null) CreatePostSheet(onClose: () => setState(() => _editingPost = null), onSubmit: () => setState(() => _editingPost = null), editingPost: _editingPost),
-          if (_isDeleteModalVisible) _DeleteConfirmationModal(post: _postToDelete!, onConfirm: _confirmDelete, onCancel: () => setState(() => _isDeleteModalVisible = false), isDeleting: _isDeleting),
+          const Icon(LucideIcons.search, size: 18, color: Color(0xFF94A3B8)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              onChanged: (v) => setState(() => _searchQuery = v),
+              style: const TextStyle(fontSize: 13, color: Color(0xFF1E293B)),
+              decoration: const InputDecoration(
+                hintText: 'Cari topik diskusi atau nama sekolah...',
+                hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Filter Chips matching Expo
+  Widget _buildFilterChips() {
+    return SizedBox(
+      height: 38,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _filterTags.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final tag = _filterTags[i];
+          final isActive = tag == _selectedTag;
+          return InkWell(
+            onTap: () => setState(() => _selectedTag = tag),
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: isActive ? const Color(0xFF1E293B) : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isActive ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+                ),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                tag,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: isActive ? Colors.white : const Color(0xFF64748B),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(LucideIcons.messageSquare, size: 36, color: Color(0xFFCBD5E1)),
+          const SizedBox(height: 12),
+          const Text(
+            'Tidak ada diskusi ditemukan',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _searchQuery.isNotEmpty
+                ? 'Tidak ada diskusi yang cocok dengan "$_searchQuery".'
+                : 'Belum ada topik diskusi untuk kategori ini. Jadilah yang pertama memulai!',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8), height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            onPressed: _handleCreatePost,
+            icon: const Icon(LucideIcons.plusCircle, size: 16, color: Colors.white),
+            label: const Text('Buat Diskusi Sekarang', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+          ),
         ],
       ),
     );
   }
 }
 
+// Post Card matching Expo React Native 1:1
 class _PostCard extends StatelessWidget {
   const _PostCard({
     required this.post,
@@ -268,118 +498,248 @@ class _PostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isOwner = currentUserId == post.authorId;
-    final tagCfg = communityTagConfigs[post.tag] ?? _TagConfig(label: post.tag, color: '#2563EB', bg: '#DBEAFE');
+    final isAuthor = currentUserId == post.authorId ||
+        (post.author.contains('Siti Aminah') && (currentUserId == null || currentUserId == 'u-guru-01'));
+    final tagCfg = communityTagConfigs[post.tag] ??
+        TagConfig(label: post.tag, color: '#D97706', bg: '#FEF3C7');
 
-    return Card(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      elevation: 0,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: AppColors.border)),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFF1F5F9)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 18,
-                    backgroundColor: AppColors.primarySoft,
-                    child: Text(getInitials(post.author), style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w800, fontSize: 13)),
+              // Pinned Banner
+              if (post.isPinned) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF3C7),
+                    borderRadius: BorderRadius.circular(6),
                   ),
-                  const SizedBox(width: 12),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(LucideIcons.pin, size: 12, color: Color(0xFFD97706)),
+                      SizedBox(width: 5),
+                      Text(
+                        'Disematkan oleh Fasilitator BGN',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFFD97706)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+
+              // Author Header Row
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(post.author, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.text)),
-                        Text('${post.school} • ${post.timeAgo}', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                        Text(
+                          post.author,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          post.school,
+                          style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                        ),
                       ],
                     ),
                   ),
-                  if (post.isPinned)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(color: AppColors.primarySoft, borderRadius: BorderRadius.circular(8)),
-                      child: const Text('PIN', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.primary)),
-                    ),
+
+                  // Tag & Author Actions (Edit, Delete)
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Color(int.parse(tagCfg.bg.replaceFirst('#', '0xFF'))),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          tagCfg.label,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(int.parse(tagCfg.color.replaceFirst('#', '0xFF'))),
+                          ),
+                        ),
+                      ),
+                      if (isAuthor) ...[
+                        const SizedBox(width: 6),
+                        InkWell(
+                          onTap: onEdit,
+                          borderRadius: BorderRadius.circular(7),
+                          child: Container(
+                            padding: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFEF3C7),
+                              borderRadius: BorderRadius.circular(7),
+                            ),
+                            child: const Icon(LucideIcons.edit3, size: 13, color: Color(0xFFD97706)),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        InkWell(
+                          onTap: onDelete,
+                          borderRadius: BorderRadius.circular(7),
+                          child: Container(
+                            padding: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFEE2E2),
+                              borderRadius: BorderRadius.circular(7),
+                            ),
+                            child: const Icon(LucideIcons.trash2, size: 13, color: Color(0xFFEF4444)),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(color: Color(int.parse(tagCfg.bg.replaceFirst('#', '0xFF'))), borderRadius: BorderRadius.circular(8)),
-                child: Text(
-                  tagCfg.label,
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(int.parse(tagCfg.color.replaceFirst('#', '0xFF')))),
+              const SizedBox(height: 8),
+
+              // Title
+              Text(
+                post.title,
+                style: const TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1E293B),
+                  height: 1.35,
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(post.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.text)),
               const SizedBox(height: 4),
-              Text(post.content, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.5), maxLines: 3, overflow: TextOverflow.ellipsis),
-              if (post.mediaUri != null) ...[
-                const SizedBox(height: 8),
-                ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(post.mediaUri!, height: 160, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox())),
+
+              // Snippet
+              Text(
+                post.content,
+                style: const TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.45),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+
+              // Media Thumbnail (if any)
+              if (post.mediaUri != null && post.mediaUri!.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Stack(
+                    children: [
+                      Image.network(
+                        post.mediaUri!,
+                        height: 160,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      ),
+                      Positioned(
+                        bottom: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(LucideIcons.image, size: 11, color: Colors.white),
+                              SizedBox(width: 4),
+                              Text(
+                                'Foto Menu',
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
+
               const SizedBox(height: 12),
+
+              // Footer Meta Row
               Row(
                 children: [
-                  _ActionIcon(icon: post.isLiked ? LucideIcons.heart : LucideIcons.heart, count: post.likesCount, active: post.isLiked, onTap: () => context.read<CommunityController>().toggleLikePost(post.id)),
-                  const SizedBox(width: 16),
-                  _ActionIcon(icon: LucideIcons.messageSquare, count: post.comments.length, active: false, onTap: () {}),
+                  const Icon(LucideIcons.clock, size: 12, color: Color(0xFF94A3B8)),
+                  const SizedBox(width: 5),
+                  Text(
+                    post.timeAgo,
+                    style: const TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8)),
+                  ),
                   const Spacer(),
-                  if (post.isPinned) ...[
-                    _ActionIcon(icon: LucideIcons.flag, count: 0, active: true, onTap: () {}),
-                    const SizedBox(width: 8),
-                  ],
-                  PopupMenuButton<String>(
-                    onSelected: (value) {
-                      if (value == 'edit') {
-                        // handled by parent
-                      } else if (value == 'delete') {
-                        // handled by parent
-                      }
-                    },
-                    itemBuilder: (_) => [
-                      const PopupMenuItem(value: 'edit', child: Row(children: [Icon(LucideIcons.edit2, size: 18), SizedBox(width: 8), Text('Edit')])),
-                      const PopupMenuItem(value: 'delete', child: Row(children: [Icon(LucideIcons.trash2, size: 18, color: AppColors.red), SizedBox(width: 8), Text('Hapus', style: TextStyle(color: AppColors.red))])),
+                  // Like Button
+                  InkWell(
+                    onTap: onLike,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: Row(
+                        children: [
+                          Icon(
+                            post.isLiked ? Icons.favorite : Icons.favorite_border,
+                            size: 15,
+                            color: post.isLiked ? const Color(0xFFEF4444) : const Color(0xFF64748B),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${post.likesCount}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: post.isLiked ? const Color(0xFFEF4444) : const Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Comment Count
+                  Row(
+                    children: [
+                      const Icon(LucideIcons.messageSquare, size: 15, color: Color(0xFF64748B)),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${post.comments.length}',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                      ),
                     ],
                   ),
                 ],
               ),
             ],
           ),
-        ),
-      );
-    }
-  }
-}
-
-class _ActionIcon extends StatelessWidget {
-  const _ActionIcon({required this.icon, required this.count, required this.active, required this.onTap});
-  final IconData icon;
-  final int count;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: active ? AppColors.primary : AppColors.textSecondary),
-            const SizedBox(width: 4),
-            Text('$count', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: active ? AppColors.primary : AppColors.textSecondary)),
-          ],
         ),
       ),
     );

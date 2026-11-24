@@ -92,17 +92,17 @@ class CommunityPost {
   final List<CommunityComment> comments;
 }
 
-const Map<String, _TagConfig> communityTagConfigs = {
-  'SOP Suhu': _TagConfig(label: 'SOP Suhu', color: '#B45309', bg: '#FEF3C7'),
-  'Rekap Presensi': _TagConfig(label: 'Rekap Presensi', color: '#15803D', bg: '#DCFCE7'),
-  'Menu Alergi': _TagConfig(label: 'Menu Alergi', color: '#7C3AED', bg: '#F3E8FF'),
-  'Pindai AI': _TagConfig(label: 'Pindai AI', color: '#2563EB', bg: '#DBEAFE'),
-  'Distribusi': _TagConfig(label: 'Distribusi', color: '#D97706', bg: '#FEF3C7'),
-  'Kebersihan': _TagConfig(label: 'Kebersihan', color: '#0D9488', bg: '#CCFBF1'),
+const Map<String, TagConfig> communityTagConfigs = {
+  'SOP Suhu': TagConfig(label: 'SOP Suhu', color: '#B45309', bg: '#FEF3C7'),
+  'Rekap Presensi': TagConfig(label: 'Rekap Presensi', color: '#15803D', bg: '#DCFCE7'),
+  'Menu Alergi': TagConfig(label: 'Menu Alergi', color: '#7C3AED', bg: '#F3E8FF'),
+  'Pindai AI': TagConfig(label: 'Pindai AI', color: '#2563EB', bg: '#DBEAFE'),
+  'Distribusi': TagConfig(label: 'Distribusi', color: '#D97706', bg: '#FEF3C7'),
+  'Kebersihan': TagConfig(label: 'Kebersihan', color: '#0D9488', bg: '#CCFBF1'),
 };
 
-class _TagConfig {
-  const _TagConfig({required this.label, required this.color, required this.bg});
+class TagConfig {
+  const TagConfig({required this.label, required this.color, required this.bg});
   final String label;
   final String color;
   final String bg;

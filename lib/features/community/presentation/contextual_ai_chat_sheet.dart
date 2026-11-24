@@ -187,7 +187,7 @@ class _ContextualAiChatSheetState extends State<ContextualAiChatSheet> {
 class _ChatMessage {
   const _ChatMessage({required this.text, required this.isUser});
   final String text;
-  final boolean isUser;
+  final bool isUser;
 }
 
 class _ChatBubble extends StatelessWidget {

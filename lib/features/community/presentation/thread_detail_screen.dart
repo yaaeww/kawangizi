@@ -4,7 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import 'package:kawangizi_mobile/core/theme/app_colors.dart';
-import 'package:kawangizi_mobile/core/utils/relative_time.dart';
+import 'package:kawangizi_mobile/core/utils/initials.dart';
 import 'package:kawangizi_mobile/features/auth/domain/backend_user.dart';
 import 'package:kawangizi_mobile/features/auth/presentation/auth_controller.dart' show AuthController;
 import '../domain/community_models.dart' show CommunityPost, CommunityComment, CommunityCommentReply, communityTagConfigs;
@@ -24,9 +24,6 @@ class _ThreadDetailScreenState extends State<ThreadDetailScreen> {
   final TextEditingController _commentController = TextEditingController();
   CommunityComment? _replyingTo;
   bool _isSubmitting = false;
-  bool _isEditModalOpen = false;
-  bool _isDeleteModalVisible = false;
-  bool _isDeleting = false;
 
   @override
   void dispose() {
@@ -36,16 +33,6 @@ class _ThreadDetailScreenState extends State<ThreadDetailScreen> {
 
   CommunityPost? _getPost(CommunityController controller) {
     return controller.posts.where((p) => p.id == widget.postId).firstOrNull;
-  }
-
-  Future<void> _handleDeletePost(CommunityController controller) async {
-    setState(() => _isDeleting = true);
-    try {
-      await controller.deletePost(widget.postId);
-      if (mounted) context.go('/community');
-    } finally {
-      if (mounted) setState(() => _isDeleting = false);
-    }
   }
 
   Future<void> _handleSubmitComment(CommunityController controller, BackendUser user) async {
@@ -74,23 +61,25 @@ class _ThreadDetailScreenState extends State<ThreadDetailScreen> {
   }
 
   void _handleDeletePostConfirm(CommunityController controller) {
-    setState(() => _isDeleting = true);
     controller.deletePost(widget.postId).then((_) {
       if (mounted) context.go('/community');
     });
   }
 
   void _handleEditPost(CommunityPost post) {
-    // Open edit modal
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => CreatePostSheet(editingPost: _getPost(context.read<CommunityController>())!),
+      builder: (sheetCtx) => CreatePostSheet(
+        editingPost: _getPost(context.read<CommunityController>())!,
+        onClose: () => Navigator.pop(sheetCtx),
+        onSubmit: () => Navigator.pop(sheetCtx),
+      ),
     );
   }
 
-  void _handleDeletePost(CommunityController controller) {
+  void _showDeleteDialog(CommunityController controller) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -132,7 +121,7 @@ class _ThreadDetailScreenState extends State<ThreadDetailScreen> {
         actions: isOwner
             ? [
                 IconButton(icon: const Icon(LucideIcons.edit2), onPressed: () => _handleEditPost(post)),
-                IconButton(icon: const Icon(LucideIcons.trash2), onPressed: () => _handleDeletePost(context.read<CommunityController>())),
+                IconButton(icon: const Icon(LucideIcons.trash2), onPressed: () => _showDeleteDialog(context.read<CommunityController>())),
               ]
             : null,
       ),
@@ -234,7 +223,9 @@ class _ThreadDetailScreenState extends State<ThreadDetailScreen> {
                   Expanded(
                     child: TextField(
                       controller: _commentController,
-                      onSubmitted: (_) => _handleSubmitComment(context.read<CommunityController>(), context.read<AuthController>().user!),
+                      onSubmitted: (_) {
+                        if (user != null) _handleSubmitComment(controller, user);
+                      },
                       decoration: InputDecoration(
                         hintText: _replyingTo != null ? 'Balas ke ${_replyingTo!.author}...' : 'Tulis komentar...',
                         hintStyle: const TextStyle(color: AppColors.textMuted),
@@ -243,14 +234,14 @@ class _ThreadDetailScreenState extends State<ThreadDetailScreen> {
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         suffixIcon: _replyingTo != null
-                            ? IconButton(icon: const Icon(LucideIcons.x, size: 20), onPressed: () => setState(() => _replyingTo = null))
+                            ? IconButton(icon: const Icon(LucideIcons.x, size: 20), onPressed: _cancelReply)
                             : null,
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
-                    onPressed: _isSubmitting ? null : () => _handleSubmitComment(context.read<CommunityController>(), context.read<AuthController>().user!),
+                    onPressed: _isSubmitting || user == null ? null : () => _handleSubmitComment(controller, user),
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: AppColors.text,
@@ -359,8 +350,8 @@ class _CommentTile extends StatelessWidget {
             ...comment.replies.map((r) => _ReplyTile(reply: r, postId: postId, onLike: () => context.read<CommunityController>().toggleLikeComment(postId, comment.id))),
           ],
         ],
-      );
-    }
+      ),
+    );
   }
 }
 
@@ -391,8 +382,8 @@ class _ReplyTile extends StatelessWidget {
           const SizedBox(height: 4),
           _CommentAction(icon: reply.isLiked ? LucideIcons.heart : LucideIcons.heart, count: reply.likesCount, active: reply.isLiked, onTap: onLike),
         ],
-      );
-    }
+      ),
+    );
   }
 }
 

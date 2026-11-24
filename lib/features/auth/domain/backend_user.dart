@@ -21,6 +21,27 @@ class BackendUser {
 
   bool get isGuest => role == 'guest';
 
+  BackendUser copyWith({
+    String? id,
+    String? fullName,
+    String? email,
+    String? role,
+    String? npsn,
+    String? schoolName,
+    String? sppgId,
+    String? status,
+  }) =>
+      BackendUser(
+        id: id ?? this.id,
+        fullName: fullName ?? this.fullName,
+        email: email ?? this.email,
+        role: role ?? this.role,
+        npsn: npsn ?? this.npsn,
+        schoolName: schoolName ?? this.schoolName,
+        sppgId: sppgId ?? this.sppgId,
+        status: status ?? this.status,
+      );
+
   factory BackendUser.fromJson(Map<String, dynamic> json) => BackendUser(
         id: (json['id'] ?? '').toString(),
         fullName: (json['fullName'] ?? json['full_name'] ?? '').toString(),

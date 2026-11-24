@@ -3,7 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import 'package:kawangizi_mobile/core/theme/app_colors.dart';
-import 'custom_bottom_tab_bar.dart';
+import 'package:kawangizi_mobile/features/auth/presentation/auth_controller.dart';
+import '../widgets/custom_bottom_tab_bar.dart';
 
 class AppShell extends StatelessWidget {
   const AppShell({
@@ -16,15 +17,15 @@ class AppShell extends StatelessWidget {
   final AuthController auth;
 
   static const _validatorTabs = [
-    _TabDef(key: 'home', label: 'Beranda', icon: LucideIcons.home, hint: 'Beranda dan ringkasan kuota MBG'),
-    _TabDef(key: 'scanner', label: 'Skrining', icon: LucideIcons.camera, hint: 'Pindai boks & evaluasi gizi AI'),
-    _TabDef(key: 'history', label: 'Riwayat', icon: LucideIcons.fileText, hint: 'Riwayat BAST dan presensi kehadiran'),
-    _TabDef(key: 'community', label: 'Komunitas', icon: LucideIcons.users, hint: 'Forum komunikasi sesama guru validator'),
+    TabDef(key: 'home', label: 'Beranda', icon: LucideIcons.home, hint: 'Beranda dan ringkasan kuota Program Gizi Sekolah'),
+    TabDef(key: 'scanner', label: 'Skrining', icon: LucideIcons.camera, hint: 'Pindai boks & evaluasi gizi AI'),
+    TabDef(key: 'history', label: 'Riwayat', icon: LucideIcons.fileText, hint: 'Riwayat BAST dan presensi kehadiran'),
+    TabDef(key: 'community', label: 'Komunitas', icon: LucideIcons.users, hint: 'Forum komunikasi sesama guru validator'),
   ];
 
   static const _guestTabs = [
-    _TabDef(key: 'scanner', label: 'Skrining', icon: LucideIcons.camera, hint: 'Pindai boks & evaluasi gizi AI'),
-    _TabDef(key: 'community', label: 'Komunitas', icon: LucideIcons.users, hint: 'Forum komunikasi sesama guru validator'),
+    TabDef(key: 'scanner', label: 'Skrining', icon: LucideIcons.camera, hint: 'Pindai boks & evaluasi gizi AI'),
+    TabDef(key: 'community', label: 'Komunitas', icon: LucideIcons.users, hint: 'Forum komunikasi sesama guru validator'),
   ];
 
   @override
@@ -33,24 +34,38 @@ class AppShell extends StatelessWidget {
     final tabs = isGuest ? _guestTabs : _validatorTabs;
 
     return Scaffold(
-      body: navigationShell,
-      bottomNavigationBar: CustomBottomTabBar(
-        currentIndex: navigationShell.currentIndex,
-        onTap: (index) => _onTabTapped(index, tabs),
-        tabs: tabs,
-        isGuest: isGuest,
+      backgroundColor: AppColors.background,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 1. Navigation Shell Screen Body fills space
+          Positioned.fill(
+            child: navigationShell,
+          ),
+          // 2. Floating Tab Bar positioned strictly at the bottom
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: CustomBottomTabBar(
+              currentIndex: navigationShell.currentIndex,
+              onTap: (index) => _onTabTapped(index, tabs),
+              tabs: tabs,
+              isGuest: isGuest,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  void _onTabTapped(int index, List<_TabDef> tabs) {
+  void _onTabTapped(int index, List<TabDef> tabs) {
     final target = tabs[index].key;
     final isGuest = auth.isGuest;
 
     if (isGuest) {
       if (target == 'home') {
-        // Guest cannot access home, redirect to scanner
-        navigationShell.goBranch(1); // scanner branch index 1
+        navigationShell.goBranch(1);
         return;
       }
       if (target == 'history') {
@@ -61,18 +76,4 @@ class AppShell extends StatelessWidget {
 
     navigationShell.goBranch(index);
   }
-}
-
-class _TabDef {
-  const _TabDef({
-    required this.key,
-    required this.label,
-    required this.icon,
-    required this.hint,
-  });
-
-  final String key;
-  final String label;
-  final IconData icon;
-  final String hint;
 }

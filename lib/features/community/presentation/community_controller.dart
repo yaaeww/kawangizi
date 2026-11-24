@@ -2,38 +2,90 @@ import 'package:flutter/material.dart';
 
 import 'package:kawangizi_mobile/core/storage/local_store.dart';
 import 'package:kawangizi_mobile/features/auth/domain/backend_user.dart';
-import '../../domain/community_models.dart';
+import '../domain/community_models.dart';
 import '../data/forum_repository.dart';
 
 class CommunityController extends ChangeNotifier {
   CommunityController({
     required ForumRepository forumRepository,
-    required LocalStore localStore,
-  })  : _forumRepository = forumRepository,
-        _localStore = localStore {
-    _loadInitial();
+    LocalStore? localStore,
+  })  : _forumRepository = forumRepository {
+    loadInitial();
   }
 
   final ForumRepository _forumRepository;
-  final LocalStore _localStore;
 
   List<CommunityPost> _posts = [];
   CommunityPost? _activeThreadPost;
   bool _loading = true;
+  int _currentPage = 1;
+  bool _hasMore = true;
+  bool _loadingMore = false;
 
   List<CommunityPost> get posts => List.unmodifiable(_posts);
   CommunityPost? get activeThreadPost => _activeThreadPost;
   bool get loading => _loading;
+  int get currentPage => _currentPage;
+  bool get hasMore => _hasMore;
+  bool get loadingMore => _loadingMore;
 
-  void _loadInitial() async {
+  Future<void> loadInitial() async {
     _loading = true;
+    _currentPage = 1;
+    _hasMore = true;
     notifyListeners();
     try {
-      _posts = await _forumRepository.getPosts();
+      final fetched = await _forumRepository.getPosts(page: 1, limit: 10);
+      _posts = fetched;
+      if (fetched.length < 10) {
+        _hasMore = false;
+      }
     } catch (_) {
       _posts = [];
     } finally {
       _loading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadMore() async {
+    if (_loading || _loadingMore || !_hasMore) return;
+    _loadingMore = true;
+    notifyListeners();
+    try {
+      final nextPage = _currentPage + 1;
+      final newPosts = await _forumRepository.getPosts(page: nextPage, limit: 10);
+      if (newPosts.isEmpty) {
+        _hasMore = false;
+      } else {
+        _currentPage = nextPage;
+        final existingIds = _posts.map((p) => p.id).toSet();
+        final filteredNew = newPosts.where((p) => !existingIds.contains(p.id)).toList();
+        _posts = [..._posts, ...filteredNew];
+        if (newPosts.length < 10) {
+          _hasMore = false;
+        }
+      }
+    } catch (_) {
+      // offline or error, keep current
+    } finally {
+      _loadingMore = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> refresh() async {
+    _currentPage = 1;
+    _hasMore = true;
+    try {
+      final fetched = await _forumRepository.getPosts(page: 1, limit: 10);
+      _posts = fetched;
+      if (fetched.length < 10) {
+        _hasMore = false;
+      }
+    } catch (_) {
+      // keep current
+    } finally {
       notifyListeners();
     }
   }
@@ -198,18 +250,7 @@ class CommunityController extends ChangeNotifier {
               content: comment.content,
               likesCount: comment.likesCount,
               isLiked: comment.isLiked,
-              replies: [...comment.replies, CommunityCommentReply(
-                id: 'r-${DateTime.now().millisecondsSinceEpoch}',
-                commentId: commentId,
-                author: user.fullName,
-                school: user.schoolName ?? '',
-                authorId: user.id,
-                timeAgo: 'Baru saja',
-                createdAt: DateTime.now().toIso8601String(),
-                content: content.trim(),
-                likesCount: 0,
-                isLiked: false,
-              )],
+              replies: [...comment.replies, newReply],
             );
           }
           return comment;

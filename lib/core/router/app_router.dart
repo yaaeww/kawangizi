@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
 
 import 'package:kawangizi_mobile/features/auth/presentation/auth_controller.dart';
 import 'package:kawangizi_mobile/features/auth/presentation/login_screen.dart';
@@ -16,17 +15,22 @@ import 'package:kawangizi_mobile/features/community/presentation/thread_detail_s
 import 'package:kawangizi_mobile/features/community/presentation/create_post_sheet.dart';
 import 'package:kawangizi_mobile/features/profile/presentation/profile_screen.dart';
 
+final _rootNavigatorKey = GlobalKey<NavigatorState>();
+
 GoRouter createRouter(AuthController auth) {
   return GoRouter(
+    navigatorKey: _rootNavigatorKey,
     initialLocation: '/welcome',
     refreshListenable: auth,
     routes: [
       GoRoute(
         path: '/welcome',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (_, __) => const WelcomeScreen(),
       ),
       GoRoute(
         path: '/login',
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (_, __) => const LoginScreen(),
       ),
       StatefulShellRoute.indexedStack(
@@ -73,7 +77,10 @@ GoRouter createRouter(AuthController auth) {
               ),
               GoRoute(
                 path: '/community/create',
-                builder: (_, __) => const CreatePostSheet(),
+                builder: (context, _) => CreatePostSheet(
+                  onClose: () => context.pop(),
+                  onSubmit: () => context.pop(),
+                ),
               ),
             ],
           ),
@@ -89,12 +96,12 @@ GoRouter createRouter(AuthController auth) {
       ),
       GoRoute(
         path: '/handover',
-        parentNavigatorKey: GlobalKey<NavigatorState>(),
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (_, __) => const HandoverScreen(),
       ),
       GoRoute(
         path: '/incident',
-        parentNavigatorKey: GlobalKey<NavigatorState>(),
+        parentNavigatorKey: _rootNavigatorKey,
         builder: (_, __) => const IncidentScreen(),
       ),
     ],

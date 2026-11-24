@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
 class ScanLogEntry {
@@ -26,7 +27,6 @@ class ScanLogStore {
   factory ScanLogStore() => _instance;
 
   final List<ScanLogEntry> _entries = [];
-  final _uuid = const Uuid();
 
   List<ScanLogEntry> get entries => List.unmodifiable(_entries);
 
@@ -37,7 +37,7 @@ class ScanLogStore {
       ScanLogEntry(
         id: 'scan-init-1',
         scannedAt: DateTime(now.year, now.month, now.day, 7, 5),
-        batchCode: 'MBG-20261010-01A',
+        batchCode: 'BATCH-20261010-01A',
         portions: 28,
         score: 98,
         severity: ScanSeverity.layak,
@@ -45,7 +45,7 @@ class ScanLogStore {
       ScanLogEntry(
         id: 'scan-init-2',
         scannedAt: DateTime(now.year, now.month, now.day, 7, 12),
-        batchCode: 'MBG-20261010-01B',
+        batchCode: 'BATCH-20261010-01B',
         portions: 30,
         score: 97,
         severity: ScanSeverity.layak,
@@ -53,7 +53,7 @@ class ScanLogStore {
       ScanLogEntry(
         id: 'scan-init-3',
         scannedAt: DateTime(now.year, now.month, now.day, 7, 18),
-        batchCode: 'MBG-20261010-02A',
+        batchCode: 'BATCH-20261010-02A',
         portions: 29,
         score: 99,
         severity: ScanSeverity.layak,
@@ -61,7 +61,7 @@ class ScanLogStore {
       ScanLogEntry(
         id: 'scan-init-4',
         scannedAt: DateTime(now.year, now.month, now.day, 7, 24),
-        batchCode: 'MBG-20261010-02B',
+        batchCode: 'BATCH-20261010-02B',
         portions: 31,
         score: 96,
         severity: ScanSeverity.layak,
@@ -69,7 +69,7 @@ class ScanLogStore {
       ScanLogEntry(
         id: 'scan-init-5',
         scannedAt: DateTime(now.year, now.month, now.day, 7, 30),
-        batchCode: 'MBG-20261010-03B',
+        batchCode: 'BATCH-20261010-03B',
         portions: 33,
         score: 98,
         severity: ScanSeverity.layak,
@@ -85,7 +85,7 @@ class ScanLogStore {
     required ScanSeverity severity,
   }) {
     final entry = ScanLogEntry(
-      id: const Uuid().v4(),
+      id: Uuid().v4(),
       scannedAt: scannedAt,
       batchCode: batchCode,
       portions: portions,
@@ -152,7 +152,7 @@ const Map<ScanSeverity, Color> severityColor = {
 const Map<ScanSeverity, Color> severityBg = {
   ScanSeverity.layak: Color(0xFFECFDF5),
   ScanSeverity.waspada: Color(0xFFFFFBEB),
-  ScanSeverity.ditolak: Color(0xFEF2F2),
+  ScanSeverity.ditolak: Color(0xFFFEF2F2),
 };
 
 bool isDistributed(ScanSeverity severity) => severity == ScanSeverity.layak || severity == ScanSeverity.waspada;

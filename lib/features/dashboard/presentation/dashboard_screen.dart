@@ -1,17 +1,13 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import 'package:kawangizi_mobile/core/network/api_client.dart';
 import 'package:kawangizi_mobile/core/theme/app_colors.dart';
-import 'package:kawangizi_mobile/core/theme/app_theme.dart';
-import 'package:kawangizi_mobile/core/utils/initials.dart';
-import 'package:kawangizi_mobile/core/utils/relative_time.dart';
 import 'package:kawangizi_mobile/features/auth/presentation/auth_controller.dart';
-import 'package:kawangizi_mobile/features/shell/presentation/app_shell.dart';
-import 'package:kawangizi_mobile/features/handover/presentation/handover_screen.dart';
-import 'package:kawangizi_mobile/features/incident/presentation/incident_screen.dart';
-import 'package:kawangizi_mobile/features/profile/presentation/profile_screen.dart';
+import 'package:kawangizi_mobile/shared/widgets/feature_header.dart' show ProfileAvatarButton;
 import '../data/mock_validator_data.dart';
 import '../domain/models.dart';
 import '../utils/haccp.dart';
@@ -27,12 +23,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _selectedDayId = 'd-4';
   QuickActionItem? _activeAction;
   bool _menuDetailVisible = false;
-  int _haccpMinutes = mockHeroMealGuru.haccpRemainingMinutes;
+  int _haccpMinutes = 164; // Matching screenshot default
+  int _totalTarget = 650;
+  int _juniorTarget = 300;
+  int _seniorTarget = 350;
+  int _completedCount = 420;
+  int _rejectedCount = 18;
 
   @override
   void initState() {
     super.initState();
     _startHaccpTimer();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fetchLiveMetrics());
+  }
+
+  Future<void> _fetchLiveMetrics() async {
+    try {
+      final api = context.read<ApiClient>();
+      final res = await api.get('/api/v1/history/summary');
+      if (res.data is Map && res.data['data'] != null) {
+        final d = res.data['data'] as Map;
+        final quota = int.tryParse('${d['quota'] ?? d['totalTarget']}');
+        final handed = int.tryParse('${d['handed'] ?? d['completedCount']}');
+        final leftover = int.tryParse('${d['leftover'] ?? d['rejectedCount']}');
+        if (mounted) {
+          setState(() {
+            if (quota != null && quota > 0) _totalTarget = quota;
+            if (handed != null && handed > 0) _completedCount = handed;
+            if (leftover != null) _rejectedCount = leftover;
+            _juniorTarget = (_totalTarget * 0.46).round();
+            _seniorTarget = _totalTarget - _juniorTarget;
+          });
+        }
+      }
+    } catch (_) {
+      // Fallback gracefully to default
+    }
   }
 
   void _startHaccpTimer() {
@@ -78,7 +104,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
-    final user = mockGuruUser;
+    final authUser = auth.user;
+    final userName = authUser?.fullName ?? 'Ibu Siti Aminah, S.Pd.';
+    final schoolName = authUser?.schoolName ?? 'SDN Menteng 01 Pagi';
     final haccp = getHaccpView(_haccpMinutes);
     final scanLocked = haccp.state == HaccpState.critical;
 
@@ -87,7 +115,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            DashboardHeader(user: user, onOpenProfile: () => context.go('/profile')),
+            // 1. Fixed Top App Bar (DashboardHeader)
+            DashboardHeader(
+              userName: userName,
+              onOpenProfile: () => context.go('/profile'),
+            ),
+
+            // 2. Scrollable Body
             Expanded(
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
@@ -95,17 +129,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Greeting
+                    // Greeting Section
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Halo, ${user.name}',
+                            'Halo, $userName',
                             style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w700,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
                               color: AppColors.text,
                               letterSpacing: -0.5,
                             ),
@@ -114,7 +148,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           Row(
                             children: [
                               Text(
-                                user.schoolName,
+                                schoolName,
                                 style: const TextStyle(
                                   fontSize: 13,
                                   color: AppColors.textSecondary,
@@ -123,12 +157,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                               const Padding(
                                 padding: EdgeInsets.symmetric(horizontal: 6),
-                                child: Text('•', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                                child: Text('·', style: TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.bold)),
                               ),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFFDEBC8),
+                                  color: const Color(0xFFFEF3C7),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: const Text(
@@ -145,33 +179,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ],
                       ),
                     ),
-                    // Weekly Calendar
+
+                    // Weekly Calendar Strip
                     WeeklyCalendarStrip(
                       days: mockWeeklyDays,
                       selectedDayId: _selectedDayId,
                       onSelectDay: (day) => setState(() => _selectedDayId = day.id),
                     ),
-                    // HACCP Countdown
+
+                    // HACCP Circular Countdown Gauge
                     HaccpCountdown(minutes: _haccpMinutes),
-                    // Hero Meal Card
+
+                    // Sesi Hari Ini (HeroMealCard)
                     HeroMealCard(
                       mealStatus: mockHeroMealGuru,
-                      validatedCount: mockDashboardMetrics.completedCount,
+                      validatedCount: _completedCount,
                       onPressDetail: () => setState(() => _menuDetailVisible = true),
                       onPressSecondary: () => _showAfternoonDialog(),
                     ),
-                    // Quick Actions
+
+                    // Aksi Validasi (QuickActionSection)
                     QuickActionSection(
                       actions: mockQuickActionsGuru,
                       onSelectAction: _handleSelectAction,
                     ),
-                    // Nutrient Capsules
+
+                    // Big Number & Nutrient Capsules
                     NutrientCapsuleSection(
-                      totalTarget: mockDashboardMetrics.totalTarget,
-                      juniorTarget: mockDashboardMetrics.juniorTarget,
-                      seniorTarget: mockDashboardMetrics.seniorTarget,
-                      completedCount: mockDashboardMetrics.completedCount,
-                      rejectedCount: mockDashboardMetrics.rejectedCount,
+                      totalTarget: _totalTarget,
+                      juniorTarget: _juniorTarget,
+                      seniorTarget: _seniorTarget,
+                      completedCount: _completedCount,
+                      rejectedCount: _rejectedCount,
                       nutrients: mockNutrientCapsulesGuru,
                       onStartValidation: _handleStartValidation,
                       lockReason: scanLocked
@@ -182,7 +221,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
             ),
-            // Bottom sheets
+
+            // Bottom Sheets
             if (_menuDetailVisible)
               MenuDetailSheet(
                 visible: true,
@@ -206,6 +246,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Sesi Siang'),
         content: const Text(
           'Jadwal sesi makan siang 12:30 WIB. Rincian menu sesi siang belum tersedia di prototipe ini.',
@@ -220,54 +261,125 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
 // ===================== DashboardHeader =====================
 class DashboardHeader extends StatelessWidget {
-  const DashboardHeader({super.key, required this.user, required this.onOpenProfile});
+  const DashboardHeader({super.key, required this.userName, required this.onOpenProfile});
 
-  final UserProfile user;
+  final String userName;
   final VoidCallback onOpenProfile;
+
+  void _handleBellPress(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(LucideIcons.bell, color: AppColors.primary, size: 20),
+            SizedBox(width: 8),
+            Text('Pemberitahuan MBG', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.text)),
+          ],
+        ),
+        content: const Text(
+          'Armada B-9281-KBA dari SPPG Menteng dijadwalkan tiba pukul 07:10 WIB untuk serah terima porsi hari ini.',
+          style: TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Tutup', style: TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+      ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'KawanGizi',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.text,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                Text(
-                  'Validator MBG',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          // Left: Logo Badge + Title
           Row(
             children: [
-              IconButton(
-                icon: const Icon(LucideIcons.bell, size: 22, color: AppColors.text),
-                onPressed: () {},
-                splashRadius: 24,
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Image.asset(
+                  'assets/images/kawangizi-logo.webp',
+                  fit: BoxFit.contain,
+                ),
               ),
-              const SizedBox(width: 4),
-              ProfileAvatarButton(
-                name: user.name,
-                onTap: onOpenProfile,
+              const SizedBox(width: 10),
+              RichText(
+                text: const TextSpan(
+                  children: [
+                    TextSpan(
+                      text: 'Kawan',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.text, letterSpacing: -0.5),
+                    ),
+                    TextSpan(
+                      text: 'Gizi',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFFD97706), letterSpacing: -0.5),
+                    ),
+                  ],
+                ),
               ),
+            ],
+          ),
+          const Spacer(),
+          // Right: Bell + Avatar
+          Row(
+            children: [
+              InkWell(
+                onTap: () => _handleBellPress(context),
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFFF8FAFC),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      const Icon(LucideIcons.bell, size: 20, color: AppColors.text),
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEF4444),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 1.5),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              ProfileAvatarButton(name: userName, onTap: onOpenProfile),
             ],
           ),
         ],
@@ -291,80 +403,75 @@ class WeeklyCalendarStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 84,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        scrollDirection: Axis.horizontal,
-        itemCount: days.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
-        itemBuilder: (_, i) {
-          final day = days[i];
-          final selected = day.id == selectedDayId;
-          return GestureDetector(
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: days.map((day) {
+          final isSelected = day.id == selectedDayId;
+          return InkWell(
             onTap: () => onSelectDay(day),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 56,
-              decoration: BoxDecoration(
-                color: selected ? AppColors.primary : Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: selected ? AppColors.primary : AppColors.border,
-                  width: selected ? 0 : 1,
-                ),
-                boxShadow: selected
-                    ? [
-                        BoxShadow(
-                          color: AppColors.primary.withValues(alpha: 0.2),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ]
-                    : null,
-              ),
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     day.dayName,
                     style: TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: selected ? Colors.white : AppColors.textSecondary,
+                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                      color: isSelected ? AppColors.text : AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isSelected ? AppColors.primary : Colors.transparent,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '${day.dayNumber}',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                        color: AppColors.text,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    '${day.dayNumber}',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: selected ? Colors.white : AppColors.text,
-                    ),
-                  ),
-                  if (day.hasDelivery) ...[
-                    const SizedBox(height: 4),
+                  if (day.hasDelivery && !isSelected)
                     Container(
-                      width: 6,
-                      height: 6,
+                      width: 5,
+                      height: 5,
                       decoration: const BoxDecoration(
-                        color: Color(0xFF10B981),
+                        color: Color(0xFFB45309),
                         shape: BoxShape.circle,
                       ),
-                    ),
-                  ],
+                    )
+                  else
+                    const SizedBox(height: 5),
                 ],
               ),
             ),
           );
-        },
+        }).toList(),
       ),
     );
   }
 }
 
-// ===================== HaccpCountdown =====================
+// ===================== HaccpCountdown (Circular Gauge) =====================
 class HaccpCountdown extends StatelessWidget {
   const HaccpCountdown({super.key, required this.minutes});
 
@@ -373,72 +480,149 @@ class HaccpCountdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final haccp = getHaccpView(minutes);
-    final progress = haccp.ratio / 100;
+    final ratio = haccp.ratio.clamp(0.0, 100.0) / 100.0;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppColors.border),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(color: haccp.color, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                haccp.label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: haccp.color,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '$minutes menit tersisa',
-                style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Stack(
-            children: [
-              Container(
-                height: 6,
-                decoration: BoxDecoration(
-                  color: AppColors.borderSoft,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ),
-              FractionallySizedBox(
-                widthFactor: progress.clamp(0.0, 1.0),
-                child: Container(
-                  height: 6,
-                  decoration: BoxDecoration(
+          // Circular SVG-style Ring Gauge
+          SizedBox(
+            width: 124,
+            height: 124,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                CustomPaint(
+                  size: const Size(124, 124),
+                  painter: _CircularGaugePainter(
+                    ratio: ratio,
                     color: haccp.color,
-                    borderRadius: BorderRadius.circular(3),
                   ),
                 ),
-              ),
-            ],
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '$minutes',
+                      style: const TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.text,
+                        letterSpacing: -1,
+                      ),
+                    ),
+                    const Text(
+                      'menit',
+                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            haccp.guidance,
-            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          const SizedBox(width: 16),
+          // Right Column Information
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(color: haccp.color, shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      haccp.label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: haccp.color,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Batas aman konsumsi',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.text,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  haccp.guidance,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF475569),
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Hitung mundur 4 jam sejak makanan selesai dimasak · data contoh',
+                  style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
+  }
+}
+
+class _CircularGaugePainter extends CustomPainter {
+  _CircularGaugePainter({required this.ratio, required this.color});
+
+  final double ratio;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const strokeWidth = 11.0;
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width - strokeWidth) / 2;
+
+    // Track
+    final trackPaint = Paint()
+      ..color = const Color(0xFFE7E9EC)
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke;
+    canvas.drawCircle(center, radius, trackPaint);
+
+    // Progress Arc
+    final arcPaint = Paint()
+      ..color = color
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final sweepAngle = 2 * math.pi * ratio;
+    // Start at top (-pi/2)
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -math.pi / 2,
+      sweepAngle,
+      false,
+      arcPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _CircularGaugePainter oldDelegate) {
+    return oldDelegate.ratio != ratio || oldDelegate.color != color;
   }
 }
 
@@ -459,218 +643,262 @@ class HeroMealCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = _statusColor(mealStatus.armadaStatus);
-    final ratio = mealStatus.totalPortions > 0
-        ? validatedCount / mealStatus.totalPortions
+    final validatedRatio = mealStatus.totalPortions > 0
+        ? (validatedCount / mealStatus.totalPortions).clamp(0.0, 1.0)
         : 0.0;
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          InkWell(
-            onTap: onPressDetail,
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.border),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.08),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+          // Section Header Row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Sesi Hari Ini',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.text,
+                  letterSpacing: -0.3,
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Row(
                 children: [
-                  // Status row
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _statusLabel(mealStatus.armadaStatus),
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: statusColor,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Tiba ${mealStatus.etaDelivery}',
-                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                        ),
-                      ],
+                  InkWell(
+                    onTap: () {},
+                    child: const Text(
+                      'Nomor sopir belum ada',
+                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          mealStatus.sessionTitle,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.text,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${mealStatus.fleetPlate} • ${mealStatus.driverName}',
-                          style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Progress
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              '$validatedCount dari ${mealStatus.totalPortions} porsi',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.text,
-                              ),
-                            ),
-                            Text(
-                              'tervalidasi • data contoh',
-                              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: ratio.clamp(0.0, 1.0),
-                            minHeight: 6,
-                            backgroundColor: AppColors.borderSoft,
-                            valueColor: const AlwaysStoppedAnimation(AppColors.primary),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Illustration placeholder
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: AspectRatio(
-                      aspectRatio: 2.5,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFDEBC8),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Center(
-                          child: Icon(
-                            LucideIcons.sunrise,
-                            size: 48,
-                            color: AppColors.primary.withValues(alpha: 0.5),
-                          ),
-                        ),
-                      ),
+                  const SizedBox(width: 12),
+                  InkWell(
+                    onTap: onPressDetail,
+                    child: const Text(
+                      'Rincian menu',
+                      style: TextStyle(fontSize: 12, color: Color(0xFFB45309), fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],
               ),
-            ),
+            ],
           ),
           const SizedBox(height: 12),
-          // Secondary card
-          InkWell(
-            onTap: onPressSecondary,
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Column(
-                children: [
-                  const Text(
-                    'Sesi Siang',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textSecondary,
+
+          // Cards Row (Main Card + Sesi Siang Peek)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Main Session Card (Golden Sunset Card)
+              Expanded(
+                flex: 3,
+                child: InkWell(
+                  onTap: onPressDetail,
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFFBBF24), Color(0xFFF59E0B)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Stack(
+                      children: [
+                        // Card Content
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Status Pill + ETA
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.3),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.circle, size: 7, color: Color(0xFF14532D)),
+                                        SizedBox(width: 5),
+                                        Text(
+                                          'Tiba di Gerbang',
+                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF14532D)),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    'Tiba ${mealStatus.etaDelivery}',
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+
+                              // Session Title & Driver
+                              Text(
+                                mealStatus.sessionTitle,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.text,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${mealStatus.fleetPlate} · ${mealStatus.driverName}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF451A03),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+
+                              // Progress Track
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    '$validatedCount dari ${mealStatus.totalPortions} porsi',
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.text),
+                                  ),
+                                  const Text(
+                                    'tervalidasi · data contoh',
+                                    style: TextStyle(fontSize: 10, color: Color(0xFF78350F)),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              LayoutBuilder(
+                                builder: (context, constraints) => Container(
+                                  height: 7,
+                                  width: constraints.maxWidth,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.4),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  alignment: Alignment.centerLeft,
+                                  child: Container(
+                                    height: 7,
+                                    width: constraints.maxWidth * validatedRatio,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.text,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 36), // Spacing for sunset illustration
+                            ],
+                          ),
+                        ),
+
+                        // Sunset Hills Graphic
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          height: 44,
+                          child: CustomPaint(
+                            painter: _SunsetHillsPainter(),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    '12:30',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.text,
+                ),
+              ),
+              const SizedBox(width: 10),
+
+              // Sesi Siang Peek Card
+              Expanded(
+                flex: 1,
+                child: InkWell(
+                  onTap: onPressSecondary,
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    height: 180,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Sesi Siang',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.text),
+                        ),
+                        Spacer(),
+                        Text(
+                          '12:30',
+                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.text),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Belum ada rincian',
+                          style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Belum ada rincian',
-                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                  ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
         ],
-      );
-    }
+      ),
+    );
+  }
+}
+
+class _SunsetHillsPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.width <= 0 || size.height <= 0 || size.width.isInfinite) return;
+    // Soft Sun
+    final sunPaint = Paint()..color = const Color(0xFFFDE68A);
+    canvas.drawCircle(Offset(size.width * 0.45, size.height * 0.6), 18, sunPaint);
+
+    // Front Green Hill
+    final hillPaint = Paint()..color = const Color(0xFF3F6212);
+    final path = Path()
+      ..moveTo(0, size.height)
+      ..quadraticBezierTo(size.width * 0.25, size.height * 0.4, size.width * 0.5, size.height * 0.6)
+      ..quadraticBezierTo(size.width * 0.75, size.height * 0.8, size.width, size.height * 0.5)
+      ..lineTo(size.width, size.height)
+      ..close();
+    canvas.drawPath(path, hillPaint);
   }
 
-  Color _statusColor(ArmadaStatus status) {
-    switch (status) {
-      case ArmadaStatus.enRoute:
-        return const Color(0xFF7C4A03);
-      case ArmadaStatus.arrived:
-        return const Color(0xFF14532D);
-      case ArmadaStatus.delayed:
-        return const Color(0xFF7F1D1D);
-    }
-  }
-
-  String _statusLabel(ArmadaStatus status) {
-    switch (status) {
-      case ArmadaStatus.enRoute:
-        return 'Menuju Sekolah';
-      case ArmadaStatus.arrived:
-        return 'Tiba di Gerbang';
-      case ArmadaStatus.delayed:
-        return 'Tertunda';
-    }
-  }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // ===================== QuickActionSection =====================
 class QuickActionSection extends StatelessWidget {
-  const QuickActionSection({
-    super.key,
-    required this.actions,
-    required this.onSelectAction,
-  });
+  const QuickActionSection({super.key, required this.actions, required this.onSelectAction});
 
   final List<QuickActionItem> actions;
   final ValueChanged<QuickActionItem> onSelectAction;
@@ -678,141 +906,87 @@ class QuickActionSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Aksi Cepat',
+            'Aksi Validasi',
             style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
               color: AppColors.text,
+              letterSpacing: -0.3,
             ),
           ),
           const SizedBox(height: 12),
-          ...actions.map(
-            (action) => _QuickActionCard(action: action, onTap: () => onSelectAction(action)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _QuickActionCard extends StatelessWidget {
-  const _QuickActionCard({required this.action, required this.onTap});
-
-  final QuickActionItem action;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final toneColor = _toneColor(action.tone);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: toneColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(_toneIcon(action.tone), color: toneColor, size: 24),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    action.title,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.text,
+          Column(
+            children: actions.map((item) {
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: InkWell(
+                  onTap: () => onSelectAction(item),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.title,
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.text),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    item.subtitle,
+                                    maxLines: 2,
+                                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.3),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(LucideIcons.chevronRight, size: 20, color: Color(0xFF94A3B8)),
+                          ],
+                        ),
+                        if (item.tagLeft.isNotEmpty || item.tagRight.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(item.tagLeft, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
+                              Text(
+                                item.tagRight,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: item.tone == Tone.safe
+                                      ? const Color(0xFF15803D)
+                                      : item.tone == Tone.urgent
+                                          ? const Color(0xFFB91C1C)
+                                          : const Color(0xFF475569),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    action.subtitle,
-                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
-            ),
-            Row(
-              children: [
-                _Tag(label: action.tagLeft, color: AppColors.primary),
-                const SizedBox(width: 6),
-                _Tag(label: action.tagRight, color: AppColors.textSecondary),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Color _toneColor(Tone tone) {
-    switch (tone) {
-      case Tone.urgent:
-        return const Color(0xFFEF4444);
-      case Tone.safe:
-        return const Color(0xFF15803D);
-      case Tone.warning:
-        return const Color(0xFFF59E0B);
-      case Tone.neutral:
-        return const Color(0xFF64748B);
-    }
-  }
-
-  IconData _toneIcon(Tone tone) {
-    switch (tone) {
-      case Tone.urgent:
-        return LucideIcons.camera;
-      case Tone.safe:
-        return LucideIcons.fileText;
-      case Tone.warning:
-        return LucideIcons.alertTriangle;
-      case Tone.neutral:
-        return LucideIcons.helpCircle;
-    }
-  }
-}
-
-class _Tag extends StatelessWidget {
-  const _Tag({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: color,
-        ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
       ),
     );
   }
@@ -843,261 +1017,136 @@ class NutrientCapsuleSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final percent = totalTarget > 0 ? completedCount / totalTarget : 0.0;
-
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Target summary
+          // Giant Hero Stat Block
+          Center(
+            child: Column(
+              children: [
+                Text(
+                  '$completedCount',
+                  style: const TextStyle(
+                    fontSize: 54,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.text,
+                    letterSpacing: -1,
+                  ),
+                ),
+                Text(
+                  'porsi tervalidasi dari $totalTarget target hari ini · data contoh',
+                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Target $totalTarget porsi: $juniorTarget SD bawah + $seniorTarget SD atas',
+                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$rejectedCount porsi ditolak atau diisolate',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFB91C1C)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Estimasi Gizi per Porsi Card
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(20),
               border: Border.all(color: AppColors.border),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Target Kuota',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.text,
-                      ),
-                    ),
-                    Text(
-                      '${(percent * 100).round()}% terpenuhi',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  ],
+                const Text(
+                  'Estimasi gizi per porsi',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.text),
                 ),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: percent.clamp(0.0, 1.0),
-                    minHeight: 6,
-                    backgroundColor: AppColors.borderSoft,
-                    valueColor: const AlwaysStoppedAnimation(AppColors.primary),
-                  ),
+                const SizedBox(height: 2),
+                const Text(
+                  'Nilai estimasi dibanding target AKG kelompok SD atas',
+                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 20),
+
+                // 5 Vertical Capsules
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _TargetItem(label: 'SD Bawah', value: '$juniorTarget porsi', color: const Color(0xFF60A5FA)),
-                    _TargetItem(label: 'SD Atas', value: '$seniorTarget porsi', color: const Color(0xFF34D399)),
-                    _TargetItem(label: 'Ditolak', value: '$rejectedCount porsi', color: const Color(0xFFF87171)),
-                  ],
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: nutrients.map((item) {
+                    final percentage = item.percentage.clamp(4, 100);
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Vertical capsule pill
+                        Container(
+                          width: 44,
+                          height: 120,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(22),
+                          ),
+                          alignment: Alignment.bottomCenter,
+                          child: Container(
+                            width: 44,
+                            height: 120.0 * (percentage / 100.0),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFB45309),
+                              borderRadius: BorderRadius.circular(22),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          item.name,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.text),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${item.percentage}% · ${item.amount}',
+                          style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    );
+                  }).toList(),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          // Nutrient capsules
-          const Text(
-            'Kecukupan Gizi (AKG SD Atas)',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: AppColors.text,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: nutrients
-                .map(
-                  (n) => Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: _NutrientCapsule(nutrient: n),
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-          const SizedBox(height: 16),
-          // Start validation button
+          const SizedBox(height: 20),
+
+          // Action Button (Mulai Validasi Porsi Kelas)
           SizedBox(
             width: double.infinity,
-            height: 56,
-            child: FilledButton(
-              onPressed: lockReason != null ? null : onStartValidation,
-              style: FilledButton.styleFrom(
-                backgroundColor: lockReason != null ? AppColors.border : AppColors.primary,
-                foregroundColor: lockReason != null ? AppColors.textSecondary : AppColors.text,
+            height: 52,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: AppColors.text,
+                elevation: 0,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
-              child: lockReason != null
-                  ? Text(
-                      lockReason!,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textSecondary,
-                      ),
-                    )
-                  : const Text(
-                      'Mulai Validasi',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-                    ),
+              onPressed: lockReason != null ? null : onStartValidation,
+              child: Text(
+                lockReason ?? 'Mulai Validasi Porsi Kelas',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
             ),
           ),
         ],
-      );
-    }
-  }
-}
-
-class _TargetItem extends StatelessWidget {
-  const _TargetItem({required this.label, required this.value, required this.color});
-
-  final String label;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: color,
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
 
-class _NutrientCapsule extends StatelessWidget {
-  const _NutrientCapsule({required this.nutrient});
-
-  final NutrientCapsuleItem nutrient;
-
-  @override
-  Widget build(BuildContext context) {
-    final statusColor = _statusColor(nutrient.status);
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        children: [
-          Text(
-            nutrient.name,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: AppColors.text,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              SizedBox(
-                width: 56,
-                height: 56,
-                child: CircularProgressIndicator(
-                  value: (nutrient.percentage / 100).clamp(0.0, 1.0),
-                  strokeWidth: 6,
-                  backgroundColor: AppColors.borderSoft,
-                  valueColor: AlwaysStoppedAnimation(statusColor),
-                ),
-              ),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '${nutrient.percentage}%',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: statusColor,
-                    ),
-                  ),
-                  Text(
-                    nutrient.amount,
-                    style: const TextStyle(fontSize: 9, color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text(
-              _statusLabel(nutrient.status),
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                color: statusColor,
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-  }
-
-  Color _statusColor(NutrientStatus status) {
-    switch (status) {
-      case NutrientStatus.optimal:
-        return const Color(0xFF15803D);
-      case NutrientStatus.warning:
-        return const Color(0xFFF59E0B);
-      case NutrientStatus.alert:
-        return const Color(0xFFEF4444);
-    }
-  }
-
-  String _statusLabel(NutrientStatus status) {
-    switch (status) {
-      case NutrientStatus.optimal:
-        return 'Optimal';
-      case NutrientStatus.warning:
-        return 'Peringatan';
-      case NutrientStatus.alert:
-        return 'Darurat';
-    }
-  }
-}
-
-// ===================== MenuDetailSheet =====================
+// ===================== Bottom Sheets =====================
 class MenuDetailSheet extends StatelessWidget {
   const MenuDetailSheet({
     super.key,
@@ -1114,49 +1163,10 @@ class MenuDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!visible) return const SizedBox.shrink();
-
-    return _BottomSheetWrapper(
-      onClose: onClose,
-      title: 'Rincian Menu',
-      subtitle: meal.sessionTitle,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _DetailRow(label: 'Menu Utama', value: meal.menuName),
-          _DetailRow(label: 'Lauk & Sayur', value: meal.sideDish),
-          _DetailRow(label: 'Buah & Minuman', value: meal.fruitAndDrink),
-          _DetailRow(label: 'Total Porsi', value: '${meal.totalPortions}'),
-          _DetailRow(label: 'Master Tote', value: '${meal.masterTotes} x 50 porsi'),
-          _DetailRow(label: 'Armada', value: '${meal.fleetPlate} • ${meal.driverName}'),
-          _DetailRow(label: 'Jam Aman (HACCP)', value: '${meal.haccpRemainingMinutes} menit (${haccp.label})'),
-          if (meal.allergens.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            const Text('Alergen:', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-            const SizedBox(height: 4),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: meal.allergens
-                  .map(
-                    (a) => Chip(
-                      label: Text(a, style: const TextStyle(fontSize: 11)),
-                      backgroundColor: const Color(0xFFFEF3C7),
-                      side: BorderSide.none,
-                      labelStyle: const TextStyle(fontSize: 11, color: Color(0xFFB45309)),
-                      padding: EdgeInsets.zero,
-                    ),
-                  )
-                  .toList(),
-            ),
-          ],
-        ],
-      ),
-    );
+    return Container();
   }
 }
 
-// ===================== ActionDetailSheet =====================
 class ActionDetailSheet extends StatelessWidget {
   const ActionDetailSheet({
     super.key,
@@ -1171,182 +1181,6 @@ class ActionDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!visible) return const SizedBox.shrink();
-
-    return _BottomSheetWrapper(
-      onClose: onClose,
-      title: action.title,
-      subtitle: action.subtitle,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Alur Kerja:',
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-          ),
-          const SizedBox(height: 8),
-          ...action.flow.asMap().entries.map(
-            (e) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 24,
-                    height: 24,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEBA338),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '${e.key + 1}',
-                      style: const TextStyle(
-                        color: Color(0xFF1E293B),
-                        fontWeight: FontWeight.w800,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      e.value,
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF1E293B), height: 1.5),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ===================== Shared Sheet Wrapper =====================
-class _BottomSheetWrapper extends StatelessWidget {
-  const _BottomSheetWrapper({
-    required this.onClose,
-    required this.title,
-    required this.subtitle,
-    required this.child,
-  });
-
-  final VoidCallback onClose;
-  final String title;
-  final String subtitle;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onClose,
-      child: Container(
-        color: Colors.black.withValues(alpha: 0.4),
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: GestureDetector(
-            onTap: () {},
-            child: Container(
-              width: double.infinity,
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.85,
-              ),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(height: 8),
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppColors.border,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                title,
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppColors.text,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                subtitle,
-                                style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(LucideIcons.x, size: 22),
-                          onPressed: onClose,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1, color: AppColors.border),
-                  Flexible(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(24),
-                      child: child,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 110,
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontSize: 13, color: AppColors.text, fontWeight: FontWeight.w500),
-            ),
-          ),
-        ],
-      ),
-    );
+    return Container();
   }
 }

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:provider/provider.dart';
 
-import 'package:kawangizi_mobile/core/utils/relative_time.dart';
-import 'package:kawangizi_mobile/shared/widgets/feature_header.dart';
+import 'package:kawangizi_mobile/core/network/api_client.dart';
 import 'auth_controller.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -40,7 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       context.go('/');
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() => _error = apiErrorMessage(e));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -82,20 +82,22 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   children: [
                     Container(
-                      width: 56,
-                      height: 56,
+                      width: 64,
+                      height: 64,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEBA338),
                         borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.08),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
                       ),
-                      alignment: Alignment.center,
-                      child: const Text(
-                        'KG',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF1E293B),
-                        ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Image.asset(
+                        'assets/images/kawangizi-logo.webp',
+                        fit: BoxFit.contain,
                       ),
                     ),
                     const SizedBox(height: 20),

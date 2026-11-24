@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+
+import 'package:kawangizi_mobile/core/theme/app_colors.dart';
 
 class SignaturePad extends StatefulWidget {
   const SignaturePad({
@@ -24,7 +25,6 @@ class SignaturePad extends StatefulWidget {
 class _SignaturePadState extends State<SignaturePad> {
   final List<_Stroke> _strokes = [];
   _Stroke? _currentStroke;
-  int _commitCount = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -79,7 +79,6 @@ class _SignaturePadState extends State<SignaturePad> {
                   if (_currentStroke != null && _currentStroke!.points.length > 1) {
                     setState(() {
                       _strokes.add(_currentStroke!);
-                      _commitCount++;
                       widget.onSign(_encodeStrokes());
                     });
                   }

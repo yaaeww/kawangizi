@@ -17,7 +17,7 @@ class DeleteConfirmationDialog extends StatelessWidget {
   final String message;
   final VoidCallback onConfirm;
   final VoidCallback onCancel;
-  final boolean isDeleting;
+  final bool isDeleting;
 
   @override
   Widget build(BuildContext context) {

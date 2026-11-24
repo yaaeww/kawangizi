@@ -1,6 +1,8 @@
-const int HACCP_TOTAL_MINUTES = 240;
-const int HACCP_WARNING_MINUTES = 90;
-const int HACCP_CRITICAL_MINUTES = 0;
+import 'package:flutter/material.dart';
+
+const int haccpTotalMinutes = 240;
+const int haccpWarningMinutes = 90;
+const int haccpCriticalMinutes = 0;
 
 enum HaccpState { safe, warning, critical }
 
@@ -23,11 +25,11 @@ class HaccpView {
 }
 
 HaccpView getHaccpView(int minutes) {
-  final clamped = minutes.clamp(0, HACCP_TOTAL_MINUTES);
+  final clamped = minutes.clamp(0, haccpTotalMinutes);
   HaccpState state;
-  if (minutes <= HACCP_CRITICAL_MINUTES) {
+  if (minutes <= haccpCriticalMinutes) {
     state = HaccpState.critical;
-  } else if (minutes <= HACCP_WARNING_MINUTES) {
+  } else if (minutes <= haccpWarningMinutes) {
     state = HaccpState.warning;
   } else {
     state = HaccpState.safe;
@@ -49,7 +51,7 @@ HaccpView getHaccpView(int minutes) {
         label: 'Waspada',
         guidance: 'Segera instruksikan pembagian ke kelas sebelum jam aman habis.',
         color: const Color(0xFFB45309),
-        ratio: (clamped / HACCP_TOTAL_MINUTES) * 100,
+        ratio: (clamped / haccpTotalMinutes) * 100,
         minutes: clamped,
       );
     case HaccpState.safe:
@@ -58,7 +60,7 @@ HaccpView getHaccpView(int minutes) {
         label: 'Aman',
         guidance: 'Jam aman konsumsi masih longgar, boleh menunggu proses serah terima.',
         color: const Color(0xFF15803D),
-        ratio: (clamped / HACCP_TOTAL_MINUTES) * 100,
+        ratio: (clamped / haccpTotalMinutes) * 100,
         minutes: clamped,
       );
   }
